@@ -12,7 +12,7 @@ import {
   TaskRunLog,
 } from './types.js';
 
-let db: Database.Database;
+export let db: Database.Database;
 
 function createSchema(database: Database.Database): void {
   database.exec(`

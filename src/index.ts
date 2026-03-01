@@ -21,6 +21,7 @@ import {
   ensureContainerRuntimeRunning,
 } from './container-runtime.js';
 import {
+  db,
   getAllChats,
   getAllRegisteredGroups,
   getAllSessions,
@@ -133,7 +134,22 @@ export function _setRegisteredGroups(
  * Called by the GroupQueue when it's this group's turn.
  */
 async function processGroupMessages(chatJid: string): Promise<boolean> {
-  const group = registeredGroups[chatJid];
+  let group = registeredGroups[chatJid];
+
+  // Auto-create a virtual group for WebSocket device chats
+  if (!group && /^device-[^@]+@nanoclaw$/.test(chatJid)) {
+    const deviceId = chatJid.replace(/^device-/, '').replace(/@nanoclaw$/, '');
+    group = {
+      name: `Device: ${deviceId}`,
+      folder: `device-${deviceId}`,
+      trigger: '',
+      added_at: new Date().toISOString(),
+      requiresTrigger: false, // Device chats don't need trigger
+    };
+    registerGroup(chatJid, group);
+    logger.info({ chatJid, deviceId }, 'Auto-registered device chat');
+  }
+
   if (!group) return true;
 
   const channel = findChannel(channels, chatJid);
@@ -338,7 +354,28 @@ async function startMessageLoop(): Promise<void> {
 
   while (true) {
     try {
-      const jids = Object.keys(registeredGroups);
+      // Get all registered group JIDs plus any WebSocket device JIDs from recent messages
+      let jids = Object.keys(registeredGroups);
+
+      // Also check for device chats in recent messages
+      try {
+        const recentDeviceChats = db
+          .prepare(
+            `SELECT DISTINCT chat_jid FROM messages WHERE chat_jid LIKE 'device-%@nanoclaw' AND timestamp > ?`,
+          )
+          .all(lastTimestamp) as { chat_jid: string }[];
+
+        if (recentDeviceChats && recentDeviceChats.length > 0) {
+          logger.debug({ recentDeviceChats, lastTimestamp }, 'Found device chats in messages');
+          for (const row of recentDeviceChats) {
+            if (!jids.includes(row.chat_jid)) {
+              jids.push(row.chat_jid);
+            }
+          }
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Failed to query device chats');
+      }
       const { messages, newTimestamp } = getNewMessages(
         jids,
         lastTimestamp,
@@ -364,7 +401,22 @@ async function startMessageLoop(): Promise<void> {
         }
 
         for (const [chatJid, groupMessages] of messagesByGroup) {
-          const group = registeredGroups[chatJid];
+          let group = registeredGroups[chatJid];
+
+          // Auto-create a virtual group for WebSocket device chats
+          if (!group && /^device-[^@]+@nanoclaw$/.test(chatJid)) {
+            const deviceId = chatJid.replace(/^device-/, '').replace(/@nanoclaw$/, '');
+            group = {
+              name: `Device: ${deviceId}`,
+              folder: `device-${deviceId}`,
+              trigger: '',
+              added_at: new Date().toISOString(),
+              requiresTrigger: false,
+            };
+            registerGroup(chatJid, group);
+            logger.info({ chatJid, deviceId }, 'Auto-registered device chat');
+          }
+
           if (!group) continue;
 
           const channel = findChannel(channels, chatJid);

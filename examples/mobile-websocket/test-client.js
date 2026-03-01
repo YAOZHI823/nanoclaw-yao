@@ -2,15 +2,31 @@
 
 /**
  * Simple Node.js WebSocket client for testing NanoClaw
- * Usage: node test-client.js [ws://localhost:9876]
+ * Usage:
+ *   node test-client.js                    # Request pairing, then enter code
+ *   node test-client.js PAIRING_CODE       # Verify with code directly
  */
 
 import WebSocket from 'ws';
+import readline from 'readline';
 
-const serverUrl = process.argv[2] || 'ws://localhost:9876';
-const deviceId = `test-device-${Date.now()}`;
+// Usage: node test-client.js [ws://url] [pairing_code]
+const serverUrl = process.argv[2]?.startsWith('ws://') ? process.argv[2] : 'ws://localhost:9876';
+
+// Reuse deviceId from file if exists, otherwise generate new one
+import { readFileSync, writeFileSync, existsSync } from 'fs';
+const deviceIdFile = '/tmp/nanoclaw-device-id';
+let deviceId = existsSync(deviceIdFile) ? readFileSync(deviceIdFile, 'utf8') : `test-device-${Date.now()}`;
+if (!existsSync(deviceIdFile)) {
+  writeFileSync(deviceIdFile, deviceId);
+}
+console.log(`Device ID: ${deviceId}`);
 
 const ws = new WebSocket(serverUrl);
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+});
 
 function send(obj) {
   ws.send(JSON.stringify(obj));
@@ -24,22 +40,37 @@ function handleMessage(data) {
   switch (msg.type) {
     case 'pairing_challenge':
       console.log(`\n📱 PAIRING CODE: ${msg.pairingCode}\n`);
-      console.log('Enter the pairing code above in NanoClaw logs, then run:');
-      console.log(`  node test-client.js ${serverUrl} ${msg.pairingCode}\n`);
+      console.log('Enter the pairing code above (or press Enter to exit):');
+      rl.question('> ', (code) => {
+        if (code.trim()) {
+          console.log('Verifying pairing...');
+          send({
+            type: 'pairing_verify',
+            deviceId,
+            pairingCode: code.trim().toUpperCase(),
+          });
+        } else {
+          ws.close();
+          process.exit(0);
+        }
+      });
       break;
 
     case 'pairing_success':
-      console.log('✅ Paired successfully!');
+      console.log('\n✅ Paired successfully!\n');
       console.log('Now you can send messages. Type and press Enter:\n');
+      promptMessage();
       break;
 
     case 'pairing_failed':
-      console.error('❌ Pairing failed:', msg.message);
+      console.error('\n❌ Pairing failed:', msg.message);
+      ws.close();
       process.exit(1);
       break;
 
     case 'message':
       console.log(`\n🤖 Assistant: ${msg.content}\n`);
+      promptMessage();
       break;
 
     case 'error':
@@ -51,21 +82,40 @@ function handleMessage(data) {
   }
 }
 
+function promptMessage() {
+  rl.question('You: ', (input) => {
+    if (input.trim().toLowerCase() === 'exit') {
+      ws.close();
+      rl.close();
+      process.exit(0);
+    }
+
+    if (input.trim()) {
+      send({
+        type: 'message',
+        content: input,
+      });
+    } else {
+      promptMessage();
+    }
+  });
+}
+
 ws.on('open', () => {
-  console.log(`Connected to ${serverUrl}`);
-  console.log(`Device ID: ${deviceId}\n`);
+  console.log(`Connected to ${serverUrl}\n`);
 
   // Check if a pairing code was provided as argument
-  const pairingCode = process.argv[3];
-  if (pairingCode) {
-    console.log('Verifying pairing...');
+  // Can be: test-client.js CODE  or  test-client.js ws://url CODE
+  const pairingCode = process.argv[2]?.startsWith('ws://') ? process.argv[3] : process.argv[2];
+  if (pairingCode && pairingCode.length === 6) {
+    console.log('Verifying pairing with code:', pairingCode);
     send({
       type: 'pairing_verify',
       deviceId,
       pairingCode: pairingCode.toUpperCase(),
     });
   } else {
-    console.log('Requesting pairing...');
+    console.log('Requesting pairing...\n');
     send({
       type: 'pairing_request',
       deviceId,
@@ -76,7 +126,8 @@ ws.on('open', () => {
 ws.on('message', handleMessage);
 
 ws.on('close', () => {
-  console.log('Disconnected');
+  console.log('\nDisconnected');
+  rl.close();
   process.exit(0);
 });
 
@@ -91,42 +142,3 @@ setInterval(() => {
     send({ type: 'ping' });
   }
 }, 30000);
-
-// Interactive input
-const readline = require('readline').createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
-
-let isPaired = false;
-
-ws.on('open', () => {
-  ws.on('message', (data) => {
-    const msg = JSON.parse(data);
-    if (msg.type === 'pairing_success') {
-      isPaired = true;
-      promptInput();
-    }
-  });
-});
-
-function promptInput() {
-  readline.question('You: ', (input) => {
-    if (input.trim().toLowerCase() === 'exit') {
-      ws.close();
-      readline.close();
-      return;
-    }
-
-    if (isPaired && input.trim()) {
-      send({
-        type: 'message',
-        content: input,
-      });
-    }
-    promptInput();
-  });
-}
-
-// Handle stdin for immediate input
-process.stdin.setEncoding('utf8');
