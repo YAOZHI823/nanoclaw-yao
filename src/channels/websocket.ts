@@ -52,6 +52,7 @@ interface ServerMessage {
   deviceId?: string;
   from?: string;
   content?: string;
+  thinking?: string;
   timestamp?: number;
 }
 
@@ -139,15 +140,27 @@ export class WebSocketChannel implements Channel {
       return;
     }
 
+    // Extract thinking content (common patterns: <thinking>, <reasoning>, ### Reasoning)
+    let thinking: string | undefined;
+    let content = text;
+
+    // Try to extract thinking from various formats
+    const thinkingMatch = text.match(/<thinking>([\s\S]*?)<\/thinking>/i);
+    if (thinkingMatch) {
+      thinking = thinkingMatch[1].trim();
+      content = text.replace(thinkingMatch[0], '').trim();
+    }
+
     const message: ServerMessage = {
       type: 'message',
       from: 'assistant',
-      content: text,
+      content,
+      thinking,
       timestamp: Date.now(),
     };
 
     this.sendJson(client, message);
-    logger.info({ jid, length: text.length }, 'Message sent to device');
+    logger.info({ jid, length: text.length, hasThinking: !!thinking }, 'Message sent to device');
   }
 
   isConnected(): boolean {
@@ -349,6 +362,35 @@ export class WebSocketChannel implements Channel {
       return;
     }
 
+    // Check if device is already registered (via device group in database)
+    const chatJid = `device-${deviceId}@nanoclaw`;
+    const registeredGroups = this.opts.registeredGroups();
+    const isRegistered = !!registeredGroups[chatJid];
+
+    // Check in-memory paired devices
+    const isPaired = this.pairedDevices.has(deviceId);
+
+    // If device group exists in registered groups, auto-pair it
+    if (isRegistered && !isPaired) {
+      this.pairedDevices.set(deviceId, {
+        deviceId,
+        displayName: deviceId,
+        pairedAt: new Date().toISOString(),
+      });
+      this.sendJson(ws, {
+        type: 'pairing_success',
+        deviceId,
+        message: 'Auto-reconnected',
+      });
+      logger.info({ deviceId }, 'Device auto-paired via registered group');
+    } else if (!isPaired) {
+      this.sendJson(ws, {
+        type: 'error',
+        message: 'Not paired',
+      });
+      return;
+    }
+
     if (!msg.content) {
       this.sendJson(ws, {
         type: 'error',
@@ -356,9 +398,6 @@ export class WebSocketChannel implements Channel {
       });
       return;
     }
-
-    // JID format: device-{deviceId}@nanoclaw (personal chat)
-    const chatJid = `device-${deviceId}@nanoclaw`;
 
     // Notify about chat metadata
     this.opts.onChatMetadata(

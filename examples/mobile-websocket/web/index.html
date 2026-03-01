@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>NanoClaw Chat</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- 状态栏 -->
+    <header class="status-bar">
+      <div class="status-indicator" id="status-indicator">
+        <span class="status-dot"></span>
+        <span class="status-text" id="status-text">连接中...</span>
+      </div>
+      <button class="rebind-btn" id="rebind-btn" style="display: none;">重新绑定</button>
+    </header>
+
+    <!-- 绑定界面 -->
+    <div id="bind-screen" class="screen">
+      <div class="bind-card">
+        <h1>NanoClaw</h1>
+        <p class="subtitle">连接到 AI 助手</p>
+        <div class="device-id" id="device-id"></div>
+        <button class="btn primary" id="request-pairing-btn">请求配对</button>
+      </div>
+    </div>
+
+    <!-- 配对界面 -->
+    <div id="pairing-screen" class="screen" style="display: none;">
+      <div class="bind-card">
+        <h1>配对中</h1>
+        <p class="subtitle">请在 NanoClaw 端查看配对码</p>
+        <div class="pairing-code" id="pairing-code">------</div>
+        <p class="hint">配对码有效期 5 分钟</p>
+        <input type="text" id="verify-code-input" class="verify-input" placeholder="输入配对码" maxlength="6">
+        <button class="btn primary" id="verify-pairing-btn">确认配对</button>
+        <button class="btn secondary" id="cancel-pairing-btn">取消</button>
+      </div>
+    </div>
+
+    <!-- 聊天界面 -->
+    <div id="chat-screen" class="screen" style="display: none;">
+      <div class="chat-header">
+        <span>🤖 Claude</span>
+      </div>
+
+      <div class="messages-container" id="messages-container">
+        <div class="loading-more" id="loading-more" style="display: none;">
+          <span>加载更多...</span>
+        </div>
+        <div id="messages-list"></div>
+      </div>
+
+      <div class="input-area">
+        <input type="text" id="message-input" placeholder="发送消息..." autocomplete="off">
+        <button class="send-btn" id="send-btn">发送</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
