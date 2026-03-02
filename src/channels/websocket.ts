@@ -16,6 +16,7 @@ import {
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { DATA_DIR } from '../config.js';
 import { resolveGroupFolderPath } from '../group-folder.js';
 
 export interface WebSocketChannelOpts {
@@ -107,8 +108,43 @@ export class WebSocketChannel implements Channel {
 
   private opts: WebSocketChannelOpts;
 
+  // Path to persist paired devices
+  private get pairedDevicesPath(): string {
+    return path.join(DATA_DIR, 'websocket-paired-devices.json');
+  }
+
   constructor(opts: WebSocketChannelOpts) {
     this.opts = opts;
+    this.loadPairedDevices();
+  }
+
+  // Load paired devices from disk
+  private loadPairedDevices(): void {
+    try {
+      const filePath = this.pairedDevicesPath;
+      if (fs.existsSync(filePath)) {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        for (const [deviceId, device] of Object.entries(data)) {
+          this.pairedDevices.set(deviceId, device as PairedDevice);
+        }
+        logger.info({ count: this.pairedDevices.size }, 'Loaded paired WebSocket devices');
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Failed to load paired devices');
+    }
+  }
+
+  // Save paired devices to disk
+  private savePairedDevices(): void {
+    try {
+      const data: Record<string, PairedDevice> = {};
+      for (const [deviceId, device] of this.pairedDevices) {
+        data[deviceId] = device;
+      }
+      fs.writeFileSync(this.pairedDevicesPath, JSON.stringify(data, null, 2));
+    } catch (err) {
+      logger.warn({ err }, 'Failed to save paired devices');
+    }
   }
 
   async connect(): Promise<void> {
@@ -375,6 +411,7 @@ export class WebSocketChannel implements Channel {
       pairedAt: new Date().toISOString(),
     };
     this.pairedDevices.set(msg.deviceId, device);
+    this.savePairedDevices();
 
     // Update client mapping
     const tempId = (ws as any).tempId;
@@ -418,6 +455,7 @@ export class WebSocketChannel implements Channel {
         displayName: deviceId,
         pairedAt: new Date().toISOString(),
       });
+      this.savePairedDevices();
       this.sendJson(ws, {
         type: 'pairing_success',
         deviceId,
@@ -480,6 +518,7 @@ export class WebSocketChannel implements Channel {
           displayName: deviceId,
           pairedAt: new Date().toISOString(),
         });
+        this.savePairedDevices();
         this.clients.delete((ws as any).tempId);
         this.clients.set(deviceId, ws);
         (ws as any).deviceId = deviceId;

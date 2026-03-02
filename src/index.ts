@@ -637,32 +637,64 @@ if (isDirectRun) {
     }
     process.exit(0);
   } else if (command === 'device-delete') {
-    const deviceId = process.argv[3];
-    if (!deviceId) {
-      console.log('Usage: nanoclaw device-delete <device-id>');
-      process.exit(1);
-    }
-    const devicesPath = path.join(DATA_DIR, 'websocket-paired-devices.json');
-    if (fs.existsSync(devicesPath)) {
-      const devices = JSON.parse(fs.readFileSync(devicesPath, 'utf-8'));
-      if (devices[deviceId]) {
-        delete devices[deviceId];
-        fs.writeFileSync(devicesPath, JSON.stringify(devices, null, 2));
-        console.log(`Deleted device: ${deviceId}`);
+    // Wrap in async IIFE to allow await
+    (async () => {
+      const deviceId = process.argv[3];
+      if (!deviceId) {
+        console.log('Usage: nanoclaw device-delete <device-id>');
+        process.exit(1);
+      }
 
-        // Also delete device session directory
-        const sessionDir = path.join(DATA_DIR, 'sessions', `device-${deviceId}`);
-        if (fs.existsSync(sessionDir)) {
-          fs.rmSync(sessionDir, { recursive: true });
-          console.log(`Deleted session directory: ${sessionDir}`);
+      // Normalize device ID (add device- prefix if missing)
+      const normalizedId = deviceId.startsWith('device-') ? deviceId : `device-${deviceId}`;
+      const chatJid = `${normalizedId}@nanoclaw`;
+
+      const devicesPath = path.join(DATA_DIR, 'websocket-paired-devices.json');
+      if (fs.existsSync(devicesPath)) {
+        const devices = JSON.parse(fs.readFileSync(devicesPath, 'utf-8'));
+
+        // Try both with and without device- prefix
+        const keyWithPrefix = deviceId.startsWith('device-') ? deviceId : `device-${deviceId}`;
+        const keyWithoutPrefix = deviceId.replace(/^device-/, '');
+
+        let deleted = false;
+        for (const key of [keyWithPrefix, keyWithoutPrefix]) {
+          if (devices[key]) {
+            delete devices[key];
+            fs.writeFileSync(devicesPath, JSON.stringify(devices, null, 2));
+            console.log(`Deleted device: ${key}`);
+            deleted = true;
+
+            // Also delete device session directory
+            const sessionDir = path.join(DATA_DIR, 'sessions', key);
+            if (fs.existsSync(sessionDir)) {
+              fs.rmSync(sessionDir, { recursive: true });
+              console.log(`Deleted session directory: ${sessionDir}`);
+            }
+            break;
+          }
+        }
+
+        if (!deleted) {
+          console.log(`Device not found: ${deviceId}`);
+        } else {
+          // Also delete messages for this device
+          try {
+            // Try to delete messages (db might not be initialized in CLI mode)
+            const { db } = await import('./db.js');
+            if (db) {
+              const result = db.prepare(`DELETE FROM messages WHERE chat_jid = ?`).run(chatJid);
+              console.log(`Deleted ${result.changes} message(s) for ${chatJid}`);
+            }
+          } catch (err) {
+            console.log(`Note: Could not delete messages (db not initialized)`);
+          }
         }
       } else {
-        console.log(`Device not found: ${deviceId}`);
+        console.log('No paired devices');
       }
-    } else {
-      console.log('No paired devices');
-    }
-    process.exit(0);
+      process.exit(0);
+    })();
   } else if (command === 'device-clear') {
     const devicesPath = path.join(DATA_DIR, 'websocket-paired-devices.json');
     if (fs.existsSync(devicesPath)) {
