@@ -140,6 +140,7 @@ function buildVolumeMounts(
       CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
       CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
+      CLAUDE_CONFIG_DIR: '/home/node/.claude',
     };
     for (const [key, value] of Object.entries(defaults)) {
       if (!(key in envSettings)) {
