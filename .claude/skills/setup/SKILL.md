@@ -98,14 +98,34 @@ Otherwise (macOS, desktop Linux, or WSL) → AskUserQuestion: QR code in browser
 
 **If failed:** qr_timeout → re-run. logged_out → delete `store/auth/` and re-run. 515 → re-run. timeout → ask user, offer retry.
 
+### Option: Skip WhatsApp, Use WebSocket Only
+
+If user wants to skip WhatsApp and use WebSocket only (good for China users, or users who only want custom app):
+
+AskUserQuestion: How would you like to connect?
+- **WhatsApp** (default) - Connect via WhatsApp
+- **WebSocket only** - Skip WhatsApp, use WebSocket channel only (requires running `/add-websocket` skill, great for China or custom apps)
+
+If **WebSocket only** selected:
+1. Skip to step 6
+2. Set channel type to WebSocket (skip WhatsApp-specific steps)
+3. After setup, remind user to run `/add-websocket` to enable WebSocket channel
+
 ## 6. Configure Trigger and Channel Type
 
+### If WhatsApp selected:
 Get bot's WhatsApp number: `node -e "const c=require('./store/auth/creds.json');console.log(c.me.id.split(':')[0].split('@')[0])"`
-
 AskUserQuestion: Shared number or dedicated? → AskUserQuestion: Trigger word? → AskUserQuestion: Main channel type?
 
 **Shared number:** Self-chat (recommended) or Solo group
 **Dedicated number:** DM with bot (recommended) or Solo group with bot
+
+### If WebSocket only selected:
+- Trigger word: User can set any word (e.g., "@Andy")
+- Channel type: WebSocket (no WhatsApp number needed)
+- Main JID will be `device-<random>@nanoclaw` format
+
+Skip to step 8 (Register Channel) - no WhatsApp-specific registration needed.
 
 ## 7. Sync and Select Group (If Group Channel)
 
