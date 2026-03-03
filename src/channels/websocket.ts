@@ -105,6 +105,10 @@ export class WebSocketChannel implements Channel {
   private pendingPairings: Map<string, PendingPairing> = new Map();
   private connected = false;
   private pendingFileTransfers: Map<string, Map<string, FileTransfer>> = new Map(); // deviceId -> fileId -> FileTransfer
+  // Message queue for offline devices
+  private messageQueue: Map<string, ServerMessage[]> = new Map();
+  // Maximum queued messages per device
+  private readonly MAX_QUEUED_MESSAGES = 50;
 
   private opts: WebSocketChannelOpts;
 
@@ -203,11 +207,6 @@ export class WebSocketChannel implements Channel {
     const deviceId = jid.replace(/^device-/, '').replace(/@nanoclaw$/, '');
     const client = this.clients.get(deviceId);
 
-    if (!client || client.readyState !== WebSocket.OPEN) {
-      logger.warn({ jid, deviceId }, 'Device not connected, message not sent');
-      return;
-    }
-
     // Extract thinking content (common patterns: <thinking>, <reasoning>, ### Reasoning)
     let thinking: string | undefined;
     let content = text;
@@ -227,8 +226,48 @@ export class WebSocketChannel implements Channel {
       timestamp: Date.now(),
     };
 
+    if (!client || client.readyState !== WebSocket.OPEN) {
+      // Device offline - queue the message
+      this.queueMessage(deviceId, message);
+      logger.warn({ jid, deviceId }, 'Device not connected, message queued');
+      return;
+    }
+
     this.sendJson(client, message);
     logger.info({ jid, length: text.length, hasThinking: !!thinking }, 'Message sent to device');
+  }
+
+  // Queue a message for offline device
+  private queueMessage(deviceId: string, message: ServerMessage): void {
+    if (!this.messageQueue.has(deviceId)) {
+      this.messageQueue.set(deviceId, []);
+    }
+    const queue = this.messageQueue.get(deviceId)!;
+
+    // Limit queue size
+    if (queue.length >= this.MAX_QUEUED_MESSAGES) {
+      queue.shift(); // Remove oldest message
+    }
+
+    queue.push(message);
+    logger.debug({ deviceId, queueSize: queue.length }, 'Message queued for offline device');
+  }
+
+  // Send queued messages to device
+  private flushMessageQueue(deviceId: string, client: WebSocket): void {
+    const queue = this.messageQueue.get(deviceId);
+    if (!queue || queue.length === 0) {
+      return;
+    }
+
+    logger.info({ deviceId, count: queue.length }, 'Flushing message queue to device');
+
+    for (const message of queue) {
+      this.sendJson(client, message);
+    }
+
+    // Clear the queue
+    this.messageQueue.delete(deviceId);
   }
 
   isConnected(): boolean {
@@ -330,6 +369,9 @@ export class WebSocketChannel implements Channel {
         message: 'Reconnected',
       });
       logger.info({ deviceId: msg.deviceId }, 'Device reconnected');
+
+      // Flush queued messages
+      this.flushMessageQueue(msg.deviceId, ws);
       return;
     }
 
@@ -428,6 +470,9 @@ export class WebSocketChannel implements Channel {
     });
 
     logger.info({ deviceId: msg.deviceId }, 'Device paired successfully');
+
+    // Flush queued messages
+    this.flushMessageQueue(msg.deviceId, ws);
   }
 
   private handleChatMessage(ws: WebSocket, msg: ClientMessage): void {
