@@ -3,6 +3,9 @@
 </p>
 
 <p align="center">
+  WebSocket Communication Exclusive Edition
+</p>
+<p align="center">
   An AI assistant that runs agents securely in their own containers. Lightweight, built to be easily understood and completely customized for your needs.
 </p>
 
