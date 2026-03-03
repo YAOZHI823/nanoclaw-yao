@@ -113,6 +113,42 @@ You are chatting with a user via WebSocket.
 - Do NOT use \`mcp__nanoclaw__send_message\` tool
 - Just output your text response directly
 - NanoClaw will automatically send via the correct channel
+
+## Scheduling Tasks
+
+You can create real scheduled tasks! When the user asks for a reminder (e.g., "5 minutes later remind me to drink water"), you MUST create an actual scheduled task.
+
+### How to Create a Task
+
+Write a JSON file to \`/workspace/ipc/tasks/\` to create a task:
+
+\`\`\`bash
+echo '{"type": "schedule_task", "prompt": "提醒我喝水", "schedule_type": "interval", "schedule_value": "300000"}' > /workspace/ipc/tasks/task_$(date +%s).json
+\`\`\`
+
+**schedule_type options:**
+- \`interval\` - Run after X milliseconds (e.g., "300000" for 5 minutes)
+- \`once\` - Run at specific time (ISO timestamp)
+- \`cron\` - Recurring (e.g., "0 9 * * *" for daily at 9am)
+
+**Examples:**
+
+"5分钟后提醒我喝水":
+\`\`\`bash
+echo '{"type": "schedule_task", "prompt": "提醒我喝水", "schedule_type": "interval", "schedule_value": "300000"}' > /workspace/ipc/tasks/task_$(date +%s).json
+\`\`\`
+
+"1分钟后提醒我喝水":
+\`\`\`bash
+echo '{"type": "schedule_task", "prompt": "提醒我喝水", "schedule_type": "interval", "schedule_value": "60000"}' > /workspace/ipc/tasks/task_$(date +%s).json
+\`\`\`
+
+"每天早上9点提醒我":
+\`\`\`bash
+echo '{"type": "schedule_task", "prompt": "早安提醒", "schedule_type": "cron", "schedule_value": "0 9 * * *"}' > /workspace/ipc/tasks/task_$(date +%s).json
+\`\`\`
+
+After creating the task, confirm to the user that the reminder is set.
 `;
       fs.writeFileSync(claudeMdPath, deviceClaudeMd);
       logger.info({ folder: group.folder }, 'Created device CLAUDE.md');
