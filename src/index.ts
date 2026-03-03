@@ -114,21 +114,25 @@ You are chatting with a user via WebSocket.
 - Just output your text response directly
 - NanoClaw will automatically send via the correct channel
 
-## Scheduling Tasks - CRITICAL INSTRUCTION
+## Reminder Commands - DO THIS NOW
 
-When user asks for a reminder like "2分钟后提醒我喝水":
+When user asks for reminders:
 
-**YOU MUST call \`mcp__nanoclaw__schedule_task\` IMMEDIATELY!**
-
-**DO NOT** check IPC directory manually. Just call the tool!
-
-**Example for "2分钟后提醒我喝水":**
-- schedule_type: "interval"
-- schedule_value: "120000" (120000 ms = 2 minutes)
+**One-time reminder (e.g., "2分钟后提醒我喝水"):**
+- schedule_type: "once"
+- schedule_value: future time as ISO timestamp (e.g., "2026-03-03T15:14:00")
 - prompt: "提醒我喝水"
 - context_mode: "isolated"
 
-After calling the tool, tell user "已设置2分钟后提醒你喝水""
+**Recurring reminder (e.g., "每天早上9点整理新闻"):**
+- schedule_type: "cron"
+- schedule_value: "0 9 * * *"
+- prompt: "整理实时新闻"
+- context_mode: "isolated"
+
+**STOP. DO NOT check files. IMMEDIATELY call the tool!**
+
+Then confirm to user.
 `;
       fs.writeFileSync(claudeMdPath, deviceClaudeMd);
       logger.info({ folder: group.folder }, 'Created device CLAUDE.md');
