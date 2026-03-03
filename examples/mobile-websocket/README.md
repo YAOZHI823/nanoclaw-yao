@@ -53,6 +53,43 @@ Send periodic ping/pong to maintain connection:
 // Response: {"type": "pong"}
 ```
 
+### Offline Message Queue
+
+When the device is offline (connection lost), messages from AI are automatically queued. When the device reconnects, queued messages are automatically delivered.
+
+- Maximum 50 messages per device
+- Queue is cleared after delivery
+
+### File Transfer
+
+**Upload file** (client → server):
+```json
+// Start
+{
+  "type": "file_start",
+  "fileId": "unique-file-id",
+  "fileName": "document.pdf",
+  "fileSize": 1024000,
+  "mimeType": "application/pdf"
+}
+
+// Chunks (base64 encoded)
+{
+  "type": "file_chunk",
+  "fileId": "unique-file-id",
+  "chunk": "base64-encoded-data"
+}
+// ... repeat for all chunks
+
+// End
+{
+  "type": "file_end",
+  "fileId": "unique-file-id"
+}
+```
+
+**Download file** (server → client): Same format as upload, chunks are delivered in sequence.
+
 ## Examples
 
 | Platform | File |
