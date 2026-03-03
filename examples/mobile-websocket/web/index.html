@@ -530,6 +530,7 @@ let isPaired = false;
 let reconnectAttempts = 0;
 let reconnectTimer = null;
 let pingInterval = null;
+let isConnected = false;
 
 // DOM Elements
 const elements = {
@@ -560,11 +561,28 @@ function init() {
   loadMessages();
   setupEventListeners();
 
+  // 初始化输入控件状态（默认禁用）
+  updateInputControls();
+
   // 根据配对状态显示对应界面
   if (isPaired) {
     showScreen('chat');
     elements.rebindBtn.style.display = 'block';
   }
+
+  // 监听页面可见性变化，从后台返回时确保连接正常
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      // 页面从后台返回，检查连接状态
+      if (!isConnected || !isPaired) {
+        // 尝试重新连接
+        console.log('Page visible, checking connection...');
+        if (ws && ws.readyState === WebSocket.CLOSED) {
+          connect();
+        }
+      }
+    }
+  });
 
   connect();
 }
@@ -828,9 +846,24 @@ function setupEventListeners() {
   elements.fileInput.addEventListener('change', handleFileSelect);
 }
 
+// 检测是否为移动端
+const isMobile = /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+  ('ontouchstart' in window) ||
+  (navigator.maxTouchPoints > 0);
+
 // Enter 键处理
 let isShiftPressed = false;
 window.handleEnter = function(e) {
+  // 移动端：Enter 键总是换行，发送用按钮
+  if (isMobile) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      // 移动端 Enter 键：换行
+      // 不阻止默认行为，允许 textarea 换行
+    }
+    return;
+  }
+
+  // 桌面端：Enter 发送，Shift+Enter 换行
   console.log('key:', e.key, 'shiftKey:', e.shiftKey);
   if (e.key === 'Shift') {
     isShiftPressed = true;
@@ -897,10 +930,17 @@ function rebind() {
   elements.messagesList.innerHTML = '';
   showScreen('bind');
   elements.rebindBtn.style.display = 'none';
+  updateInputControls();
 }
 
 // 发送消息
 function sendMessage() {
+  // 检查连接状态
+  if (!isConnected || !isPaired) {
+    alert('请等待连接成功后再发送消息');
+    return;
+  }
+
   const rawValue = elements.messageInput.value;
   const content = rawValue.trim();
   if (!content) return;
@@ -942,6 +982,53 @@ function handleFileSelect(e) {
   const file = e.target.files[0];
   if (!file) return;
 
+  // 保存文件引用，等待连接恢复后上传
+  const fileToUpload = file;
+
+  // 检查连接状态，如果断开则尝试重连
+  if (!isConnected || !isPaired) {
+    // 尝试重连
+    if (ws && ws.readyState === WebSocket.CONNECTING) {
+      alert('正在连接中，请稍候再试');
+      e.target.value = '';
+      return;
+    }
+
+    // 断开则提示用户并等待连接
+    if (!isConnected) {
+      alert('连接已断开，正在重新连接，请稍候重试上传');
+      // 触发重连
+      if (ws) {
+        ws.close();
+      }
+      // 等待重连成功后上传
+      const checkAndUpload = setInterval(() => {
+        if (isConnected && isPaired) {
+          clearInterval(checkAndUpload);
+          // 重新触发文件选择
+          handleFileAfterReconnect(fileToUpload);
+        }
+      }, 1000);
+      // 30秒超时
+      setTimeout(() => clearInterval(checkAndUpload), 30000);
+      e.target.value = '';
+      return;
+    }
+  }
+
+  // 正常上传
+  uploadFile(file);
+  e.target.value = '';
+}
+
+// 重连后上传文件
+function handleFileAfterReconnect(file) {
+  alert('已重新连接，正在上传文件');
+  uploadFile(file);
+}
+
+// 上传文件
+function uploadFile(file) {
   // 显示上传进度
   showUploadProgress(file.name, file.size);
 
@@ -952,9 +1039,6 @@ function handleFileSelect(e) {
     sendFile(file.name, file.size, file.type, base64);
   };
   reader.readAsDataURL(file);
-
-  // 清空 input 以便再次选择同一文件
-  e.target.value = '';
 }
 
 function showUploadProgress(fileName, fileSize) {
@@ -1120,6 +1204,7 @@ function handleMessage(msg) {
       localStorage.setItem(PAIRED_KEY, 'true');
       showScreen('chat');
       elements.rebindBtn.style.display = 'block';
+      updateInputControls();
       break;
 
     case 'pairing_failed':
@@ -1429,6 +1514,31 @@ function updateStatus(state, text) {
   const dot = elements.statusIndicator.querySelector('.status-dot');
   dot.className = 'status-dot ' + state;
   elements.statusText.textContent = text;
+
+  // 更新连接状态
+  isConnected = (state === 'connected');
+
+  // 根据连接状态启用/禁用输入控件
+  updateInputControls();
+}
+
+// 更新输入控件的可用状态
+function updateInputControls() {
+  const connected = isConnected && isPaired;
+
+  elements.sendBtn.disabled = !connected;
+  elements.messageInput.disabled = !connected;
+  elements.fileBtn.disabled = !connected;
+  elements.fileInput.disabled = !connected;
+
+  // 更新占位符文本
+  if (!connected) {
+    elements.messageInput.placeholder = '等待连接...';
+  } else if (isMobile) {
+    elements.messageInput.placeholder = '输入消息...';
+  } else {
+    elements.messageInput.placeholder = '发送消息... (Enter发送, Shift+Enter换行)';
+  }
 }
 
 // 显示指定屏幕

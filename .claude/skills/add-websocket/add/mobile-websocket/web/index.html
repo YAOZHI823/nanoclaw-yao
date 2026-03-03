@@ -530,6 +530,7 @@ let isPaired = false;
 let reconnectAttempts = 0;
 let reconnectTimer = null;
 let pingInterval = null;
+let isConnected = false;
 
 // DOM Elements
 const elements = {
@@ -559,6 +560,9 @@ function init() {
   loadDeviceId();
   loadMessages();
   setupEventListeners();
+
+  // 初始化输入控件状态（默认禁用）
+  updateInputControls();
 
   // 根据配对状态显示对应界面
   if (isPaired) {
@@ -828,9 +832,24 @@ function setupEventListeners() {
   elements.fileInput.addEventListener('change', handleFileSelect);
 }
 
+// 检测是否为移动端
+const isMobile = /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+  ('ontouchstart' in window) ||
+  (navigator.maxTouchPoints > 0);
+
 // Enter 键处理
 let isShiftPressed = false;
 window.handleEnter = function(e) {
+  // 移动端：Enter 键总是换行，发送用按钮
+  if (isMobile) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      // 移动端 Enter 键：换行
+      // 不阻止默认行为，允许 textarea 换行
+    }
+    return;
+  }
+
+  // 桌面端：Enter 发送，Shift+Enter 换行
   console.log('key:', e.key, 'shiftKey:', e.shiftKey);
   if (e.key === 'Shift') {
     isShiftPressed = true;
@@ -897,10 +916,17 @@ function rebind() {
   elements.messagesList.innerHTML = '';
   showScreen('bind');
   elements.rebindBtn.style.display = 'none';
+  updateInputControls();
 }
 
 // 发送消息
 function sendMessage() {
+  // 检查连接状态
+  if (!isConnected || !isPaired) {
+    alert('请等待连接成功后再发送消息');
+    return;
+  }
+
   const rawValue = elements.messageInput.value;
   const content = rawValue.trim();
   if (!content) return;
@@ -941,6 +967,13 @@ let pendingFile = null;
 function handleFileSelect(e) {
   const file = e.target.files[0];
   if (!file) return;
+
+  // 检查连接状态
+  if (!isConnected || !isPaired) {
+    alert('请等待连接成功后再上传文件');
+    e.target.value = '';
+    return;
+  }
 
   // 显示上传进度
   showUploadProgress(file.name, file.size);
@@ -1120,6 +1153,7 @@ function handleMessage(msg) {
       localStorage.setItem(PAIRED_KEY, 'true');
       showScreen('chat');
       elements.rebindBtn.style.display = 'block';
+      updateInputControls();
       break;
 
     case 'pairing_failed':
@@ -1429,6 +1463,31 @@ function updateStatus(state, text) {
   const dot = elements.statusIndicator.querySelector('.status-dot');
   dot.className = 'status-dot ' + state;
   elements.statusText.textContent = text;
+
+  // 更新连接状态
+  isConnected = (state === 'connected');
+
+  // 根据连接状态启用/禁用输入控件
+  updateInputControls();
+}
+
+// 更新输入控件的可用状态
+function updateInputControls() {
+  const connected = isConnected && isPaired;
+
+  elements.sendBtn.disabled = !connected;
+  elements.messageInput.disabled = !connected;
+  elements.fileBtn.disabled = !connected;
+  elements.fileInput.disabled = !connected;
+
+  // 更新占位符文本
+  if (!connected) {
+    elements.messageInput.placeholder = '等待连接...';
+  } else if (isMobile) {
+    elements.messageInput.placeholder = '输入消息...';
+  } else {
+    elements.messageInput.placeholder = '发送消息... (Enter发送, Shift+Enter换行)';
+  }
 }
 
 // 显示指定屏幕

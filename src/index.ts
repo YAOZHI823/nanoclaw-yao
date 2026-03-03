@@ -114,6 +114,23 @@ You are chatting with a user via WebSocket.
 - Just output your text response directly
 - NanoClaw will automatically send via the correct channel
 
+## File Handling
+
+When user sends a file, you will receive a message like:
+`[发送了文件: xxx.pdf (1.2 MB)]`
+
+**The file is located at:** `/workspace/group/uploads/{filename}`
+
+To read/analyze the file:
+- Use \`Read\` tool to read file content (for text files, PDFs, etc.)
+- Use \`Bash\` with commands like \`cat\`, \`head\`, \`tail\` to inspect files
+- The file path is also available in the message's \`attachments\` array
+
+Example: to read an uploaded PDF, use:
+\`\`\`bash
+ls -la /workspace/group/uploads/
+\`\`\`
+
 ## Reminder Commands - DO THIS NOW
 
 When user asks for reminders:
