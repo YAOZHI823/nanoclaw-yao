@@ -61,7 +61,7 @@ Then run `/setup`. Claude Code handles everything: dependencies, authentication,
 - **Web access** - Search and fetch content from the Web
 - **Container isolation** - Agents are sandboxed in Apple Container (macOS) or Docker (macOS/Linux)
 - **Agent Swarms** - Spin up teams of specialized agents that collaborate on complex tasks. NanoClaw is the first personal AI assistant to support agent swarms.
-- **WebSocket Channel** - Build custom mobile/web apps that connect via WebSocket. Supports bidirectional file transfer and offline message queue.
+- **WebSocket Channel** - Build custom mobile/web apps that connect via WebSocket. Perfect for regions where WhatsApp/Telegram are blocked (e.g., China). Works seamlessly with NAT/内网穿透 (frp, cloudflare tunnel, etc.) to bypass firewall restrictions. Supports bidirectional file transfer and offline message queue. Also customizable for enterprise platforms like WeCom (企业微信), DingTalk (钉钉), or Feishu (飞书).
 - **Optional integrations** - Add Gmail (`/add-gmail`) and more via skills
 
 ## Usage
