@@ -7,6 +7,12 @@
         "MINIMAX_API_KEY": "__ANTHROPIC_API_KEY__",
         "MINIMAX_API_HOST": "https://api.minimaxi.com"
       }
+    },
+    "fetch": {
+      "command": "node",
+      "args": [
+        "~/.claude/mcp/fetch-mcp/dist/index.js"
+      ]
     }
   }
 }

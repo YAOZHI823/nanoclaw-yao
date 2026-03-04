@@ -212,9 +212,24 @@ export function _setRegisteredGroups(
 async function processGroupMessages(chatJid: string): Promise<boolean> {
   let group = registeredGroups[chatJid];
 
-  // Auto-create a virtual group for WebSocket device chats
+  // Auto-create a virtual group for WebSocket device chats ONLY if paired
   if (!group && /^device-[^@]+@nanoclaw$/.test(chatJid)) {
     const deviceId = chatJid.replace(/^device-/, '').replace(/@nanoclaw$/, '');
+
+    // Check if device is actually paired (deviceId is already in format like "web-xxx")
+    const devicesPath = path.join(DATA_DIR, 'websocket-paired-devices.json');
+    let isPaired = false;
+    if (fs.existsSync(devicesPath)) {
+      const devices = JSON.parse(fs.readFileSync(devicesPath, 'utf-8'));
+      // deviceId is already the full key (e.g., "web-1772470789889-vo7gyr")
+      isPaired = devices[deviceId] !== undefined;
+    }
+
+    if (!isPaired) {
+      logger.warn({ chatJid, deviceId }, 'Device not paired, ignoring message');
+      return true;
+    }
+
     group = {
       name: `Device: ${deviceId}`,
       folder: `device-${deviceId}`,
@@ -480,9 +495,24 @@ async function startMessageLoop(): Promise<void> {
         for (const [chatJid, groupMessages] of messagesByGroup) {
           let group = registeredGroups[chatJid];
 
-          // Auto-create a virtual group for WebSocket device chats
+          // Auto-create a virtual group for WebSocket device chats ONLY if paired
           if (!group && /^device-[^@]+@nanoclaw$/.test(chatJid)) {
             const deviceId = chatJid.replace(/^device-/, '').replace(/@nanoclaw$/, '');
+
+            // Check if device is actually paired (deviceId is already in format like "web-xxx")
+            const devicesPath = path.join(DATA_DIR, 'websocket-paired-devices.json');
+            let isPaired = false;
+            if (fs.existsSync(devicesPath)) {
+              const devices = JSON.parse(fs.readFileSync(devicesPath, 'utf-8'));
+              // deviceId is already the full key (e.g., "web-1772470789889-vo7gyr")
+              isPaired = devices[deviceId] !== undefined;
+            }
+
+            if (!isPaired) {
+              logger.warn({ chatJid, deviceId }, 'Device not paired, skipping');
+              continue;
+            }
+
             group = {
               name: `Device: ${deviceId}`,
               folder: `device-${deviceId}`,
@@ -728,6 +758,13 @@ if (isDirectRun) {
               fs.rmSync(sessionDir, { recursive: true });
               console.log(`Deleted session directory: ${sessionDir}`);
             }
+
+            // Also delete device IPC directory
+            const ipcDir = path.join(DATA_DIR, 'ipc', key);
+            if (fs.existsSync(ipcDir)) {
+              fs.rmSync(ipcDir, { recursive: true });
+              console.log(`Deleted IPC directory: ${ipcDir}`);
+            }
             break;
           }
         }
@@ -735,17 +772,28 @@ if (isDirectRun) {
         if (!deleted) {
           console.log(`Device not found: ${deviceId}`);
         } else {
-          // Delete messages for this device using direct SQLite connection
+          // Delete all device data from database
           try {
             const dbPath = path.join(STORE_DIR, 'messages.db');
             if (fs.existsSync(dbPath)) {
               const db = new Database(dbPath);
-              const result = db.prepare(`DELETE FROM messages WHERE chat_jid LIKE ?`).run(`${normalizedId}%`);
-              console.log(`Deleted ${result.changes} message(s) for ${chatJid}`);
+
+              // Delete messages
+              const msgResult = db.prepare('DELETE FROM messages WHERE chat_jid = ?').run(chatJid);
+              console.log(`Deleted ${msgResult.changes} message(s)`);
+
+              // Delete from chats
+              const chatResult = db.prepare('DELETE FROM chats WHERE jid = ?').run(chatJid);
+              console.log(`Deleted ${chatResult.changes} chat(s)`);
+
+              // Delete from registered_groups
+              const regResult = db.prepare('DELETE FROM registered_groups WHERE jid = ?').run(chatJid);
+              console.log(`Deleted ${regResult.changes} registration(s)`);
+
               db.close();
             }
           } catch (err) {
-            console.log(`Note: Could not delete messages: ${err}`);
+            console.log(`Note: Could not delete from database: ${err}`);
           }
         }
       } else {
@@ -772,17 +820,52 @@ if (isDirectRun) {
       }
     }
 
-    // Delete all device messages
+    // Delete all device IPC directories
+    const ipcDir = path.join(DATA_DIR, 'ipc');
+    if (fs.existsSync(ipcDir)) {
+      for (const dir of fs.readdirSync(ipcDir)) {
+        if (dir.startsWith('device-')) {
+          const fullPath = path.join(ipcDir, dir);
+          fs.rmSync(fullPath, { recursive: true });
+          console.log(`Deleted IPC: ${fullPath}`);
+        }
+      }
+    }
+
+    // Delete all device group directories
+    const groupsDir = path.join(process.cwd(), 'groups');
+    if (fs.existsSync(groupsDir)) {
+      for (const dir of fs.readdirSync(groupsDir)) {
+        if (dir.startsWith('device-')) {
+          const fullPath = path.join(groupsDir, dir);
+          fs.rmSync(fullPath, { recursive: true });
+          console.log(`Deleted group: ${fullPath}`);
+        }
+      }
+    }
+
+    // Delete all device data from database
     try {
       const dbPath = path.join(STORE_DIR, 'messages.db');
       if (fs.existsSync(dbPath)) {
         const db = new Database(dbPath);
-        const result = db.prepare(`DELETE FROM messages WHERE chat_jid LIKE 'device-%@nanoclaw'`).run();
-        console.log(`Deleted ${result.changes} device message(s)`);
+
+        // Delete messages
+        const msgResult = db.prepare("DELETE FROM messages WHERE chat_jid LIKE 'device-%@nanoclaw'").run();
+        console.log(`Deleted ${msgResult.changes} message(s)`);
+
+        // Delete from chats
+        const chatResult = db.prepare("DELETE FROM chats WHERE jid LIKE 'device-%@nanoclaw'").run();
+        console.log(`Deleted ${chatResult.changes} chat(s)`);
+
+        // Delete from registered_groups
+        const regResult = db.prepare("DELETE FROM registered_groups WHERE jid LIKE 'device-%@nanoclaw'").run();
+        console.log(`Deleted ${regResult.changes} registration(s)`);
+
         db.close();
       }
     } catch (err) {
-      console.log(`Note: Could not delete messages: ${err}`);
+      console.log(`Note: Could not delete from database: ${err}`);
     }
 
     console.log('Cleared all device data');
