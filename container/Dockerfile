@@ -39,6 +39,10 @@ RUN mkdir -p /root/.config/uv && \
     printf '[pip]\nindex-url = "https://mirrors.aliyun.com/pypi/simple/"\ntrusted-host = "mirrors.aliyun.com"\n' > /root/.config/uv/uv.toml
 ENV PATH="/usr/local/bin:$PATH"
 
+# Install Python and document processing libraries
+RUN apt-get update && apt-get install -y python3 python3-pip && rm -rf /var/lib/apt/lists/*
+RUN pip3 install pypdf pdfplumber reportlab python-docx python-pptx openpyxl pillow --break-system-packages
+
 # Install agent-browser and claude-code globally
 RUN npm install -g agent-browser @anthropic-ai/claude-code
 
