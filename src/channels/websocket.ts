@@ -12,6 +12,8 @@ import {
   WEBSOCKET_PORT,
   WEBSOCKET_PAIRING_CODE_LENGTH,
   WEBSOCKET_PAIRING_EXPIRY_MS,
+  DEVICE_JID_PATTERN,
+  extractDeviceId,
 } from '../config.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -204,7 +206,11 @@ export class WebSocketChannel implements Channel {
 
   async sendMessage(jid: string, text: string): Promise<void> {
     // jid format: device-{deviceId}@nanoclaw
-    const deviceId = jid.replace(/^device-/, '').replace(/@nanoclaw$/, '');
+    const deviceId = extractDeviceId(jid);
+    if (!deviceId) {
+      logger.warn({ jid }, 'Invalid device JID format');
+      return;
+    }
     const client = this.clients.get(deviceId);
 
     // Extract thinking content (common patterns: <thinking>, <reasoning>, ### Reasoning)
@@ -276,7 +282,7 @@ export class WebSocketChannel implements Channel {
 
   ownsJid(jid: string): boolean {
     // Owns device-{deviceId}@nanoclaw JIDs
-    return /^device-[^@]+@nanoclaw$/.test(jid);
+    return DEVICE_JID_PATTERN.test(jid);
   }
 
   async disconnect(): Promise<void> {
@@ -703,7 +709,11 @@ export class WebSocketChannel implements Channel {
 
   // Send file to client (called from router or other parts)
   async sendFile(jid: string, fileName: string, filePath: string, mimeType: string): Promise<void> {
-    const deviceId = jid.replace(/^device-/, '').replace(/@nanoclaw$/, '');
+    const deviceId = extractDeviceId(jid);
+    if (!deviceId) {
+      logger.warn({ jid }, 'Invalid device JID format');
+      return;
+    }
     const client = this.clients.get(deviceId);
 
     if (!client || client.readyState !== WebSocket.OPEN) {

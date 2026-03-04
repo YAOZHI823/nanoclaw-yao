@@ -8,6 +8,7 @@ import {
   IPC_POLL_INTERVAL,
   MAIN_GROUP_FOLDER,
   TIMEZONE,
+  DEVICE_JID_PATTERN,
 } from './config.js';
 import { AvailableGroup } from './container-runner.js';
 import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
@@ -43,6 +44,13 @@ export function startIpcWatcher(deps: IpcDeps): void {
   fs.mkdirSync(ipcBaseDir, { recursive: true });
 
   const processIpcFiles = async () => {
+    // Helper function to move failed IPC files to error directory
+    const moveToErrorDir = (filePath: string, sourceGroup: string, file: string) => {
+      const errorDir = path.join(ipcBaseDir, 'errors');
+      fs.mkdirSync(errorDir, { recursive: true });
+      fs.renameSync(filePath, path.join(errorDir, `${sourceGroup}-${file}`));
+    };
+
     // Scan all group IPC directories (identity determined by directory)
     let groupFolders: string[];
     try {
@@ -98,7 +106,7 @@ export function startIpcWatcher(deps: IpcDeps): void {
                 // 2. Target is in registeredGroups and matches source group
                 // 3. Target is a WebSocket device (device-*@nanoclaw pattern) - always allow
                 const targetGroup = registeredGroups[data.chatJid];
-                const isWebSocketDevice = /^device-[^@]+@nanoclaw$/.test(data.chatJid);
+                const isWebSocketDevice = DEVICE_JID_PATTERN.test(data.chatJid);
 
                 if (
                   isMain ||
@@ -136,12 +144,7 @@ export function startIpcWatcher(deps: IpcDeps): void {
                 { file, sourceGroup, err },
                 'Error processing IPC message',
               );
-              const errorDir = path.join(ipcBaseDir, 'errors');
-              fs.mkdirSync(errorDir, { recursive: true });
-              fs.renameSync(
-                filePath,
-                path.join(errorDir, `${sourceGroup}-${file}`),
-              );
+              moveToErrorDir(filePath, sourceGroup, file);
             }
           }
         }
@@ -170,12 +173,7 @@ export function startIpcWatcher(deps: IpcDeps): void {
                 { file, sourceGroup, err },
                 'Error processing IPC task',
               );
-              const errorDir = path.join(ipcBaseDir, 'errors');
-              fs.mkdirSync(errorDir, { recursive: true });
-              fs.renameSync(
-                filePath,
-                path.join(errorDir, `${sourceGroup}-${file}`),
-              );
+              moveToErrorDir(filePath, sourceGroup, file);
             }
           }
         }

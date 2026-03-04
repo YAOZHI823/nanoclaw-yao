@@ -123,6 +123,8 @@ function buildVolumeMounts(
       // Enable Claude's memory feature (persists user preferences between sessions)
       // https://code.claude.com/docs/en/memory#manage-auto-memory
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
+      // Use PyPI mirror for uvx (MCP packages) - required for Chinese network
+      UV_INDEX_URL: 'https://pypi.tuna.tsinghua.edu.cn/simple',
     };
 
     // Add secrets to env settings
@@ -145,17 +147,35 @@ function buildVolumeMounts(
       const mcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf-8'));
       const mcpServers = mcpConfig.mcpServers as Record<string, unknown> || {};
 
-      // Inject secrets into MCP env
+      // Inject secrets into MCP env and fix paths
       for (const [serverName, serverConfig] of Object.entries(mcpServers)) {
         if (serverConfig && typeof serverConfig === 'object') {
           const config = serverConfig as Record<string, unknown>;
           const env = config.env as Record<string, string> || {};
+
+          // Inject secrets from __KEY__ placeholders
           for (const [key, value] of Object.entries(env)) {
             if (typeof value === 'string' && value.startsWith('__') && value.endsWith('__')) {
               const secretName = value.slice(2, -2);
               env[key] = secrets?.[secretName] || '';
             }
           }
+
+          // Add UV_INDEX_URL for Python MCPs (uvx) - required for Chinese network
+          if (serverName === 'MiniMax' || (config.command === 'uvx')) {
+            env['UV_INDEX_URL'] = 'https://pypi.tuna.tsinghua.edu.cn/simple';
+          }
+
+          // Fix ~ path to /home/node for Node.js MCPs
+          if (config.command === 'node' && config.args) {
+            const args = config.args as string[];
+            for (let i = 0; i < args.length; i++) {
+              if (args[i].startsWith('~')) {
+                args[i] = args[i].replace('~', '/home/node');
+              }
+            }
+          }
+
           config.env = env;
         }
       }
@@ -179,6 +199,24 @@ function buildVolumeMounts(
       fs.cpSync(srcDir, dstDir, { recursive: true });
     }
   }
+
+  // Sync MCP packages from container/mcp/ into each group's .claude/mcp/
+  const mcpSrc = path.join(process.cwd(), 'container', 'mcp');
+  const mcpDst = path.join(groupSessionsDir, 'mcp');
+  if (fs.existsSync(mcpSrc)) {
+    // Remove existing mcp dir to avoid permission issues
+    if (fs.existsSync(mcpDst)) {
+      fs.rmSync(mcpDst, { recursive: true, force: true });
+    }
+    fs.mkdirSync(mcpDst, { recursive: true });
+    for (const mcpDir of fs.readdirSync(mcpSrc)) {
+      const srcDir = path.join(mcpSrc, mcpDir);
+      if (!fs.statSync(srcDir).isDirectory()) continue;
+      const dstDir = path.join(mcpDst, mcpDir);
+      fs.cpSync(srcDir, dstDir, { recursive: true });
+    }
+  }
+
   mounts.push({
     hostPath: groupSessionsDir,
     containerPath: '/home/node/.claude',
@@ -302,7 +340,7 @@ export async function runContainerAgent(
 
   // Read secrets for settings.json and MCP configuration
   const secrets = readSecrets();
-  console.log('[container-runner] Secrets keys:', Object.keys(secrets));
+  logger.debug({ keys: Object.keys(secrets) }, 'Loaded secrets keys');
   const mounts = buildVolumeMounts(group, input.isMain, secrets);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;

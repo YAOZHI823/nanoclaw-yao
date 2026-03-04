@@ -67,3 +67,12 @@ export const TIMEZONE =
 export const WEBSOCKET_PORT = parseInt(process.env.WEBSOCKET_PORT || '9876', 10);
 export const WEBSOCKET_PAIRING_CODE_LENGTH = 6;
 export const WEBSOCKET_PAIRING_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+
+// Device JID pattern and utilities
+export const DEVICE_JID_PATTERN = /^device-[^@]+@nanoclaw$/;
+
+export function extractDeviceId(chatJid: string): string | null {
+  return DEVICE_JID_PATTERN.test(chatJid)
+    ? chatJid.replace(/^device-/, '').replace(/@nanoclaw$/, '')
+    : null;
+}

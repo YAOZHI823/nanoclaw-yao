@@ -382,6 +382,31 @@ export function getAllTasks(): ScheduledTask[] {
     .all() as ScheduledTask[];
 }
 
+/**
+ * Get formatted tasks data for snapshot files.
+ * Used by both index.ts and task-scheduler.ts to write task snapshots.
+ */
+export function getTasksSnapshotData(): Array<{
+  id: string;
+  groupFolder: string;
+  prompt: string;
+  schedule_type: string;
+  schedule_value: string;
+  status: string;
+  next_run: string | null;
+}> {
+  const tasks = getAllTasks();
+  return tasks.map((t) => ({
+    id: t.id,
+    groupFolder: t.group_folder,
+    prompt: t.prompt,
+    schedule_type: t.schedule_type,
+    schedule_value: t.schedule_value,
+    status: t.status,
+    next_run: t.next_run,
+  }));
+}
+
 export function updateTask(
   id: string,
   updates: Partial<
