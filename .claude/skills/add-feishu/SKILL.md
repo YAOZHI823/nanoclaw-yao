@@ -26,6 +26,9 @@ This skill adds Feishu support to NanoClaw. It uses the official `@larksuiteoapi
   - `im:message`（获取用户发给机器人的单聊消息）
   - `im:message.group_at_msg`（获取群组中 @ 机器人的消息）
   - `im:message:send_as_bot`（以应用身份发送消息）
+  - `im:message` (获取与发送单聊、群组消息)
+  - `drive:file` (上传、下载文件)
+  - `im:resource` (获取与上传图片或文件资源)
 - 进入「版本管理与发布」，创建版本并发布（企业自建应用通常无需审核）
 
 ### 3. 获取凭证
