@@ -457,6 +457,36 @@ html, body {
 .download-btn:active {
   opacity: 0.7;
 }
+
+/* 文件缩略图 */
+.file-thumbnail {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* 图片预览模态框 */
+.image-preview-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.image-preview-modal img {
+  max-width: 90%;
+  max-height: 90%;
+  border-radius: 8px;
+}
   </style>
 </head>
 <body>
@@ -667,18 +697,48 @@ function createMessageElement(msg) {
     const fileEl = document.createElement('div');
     fileEl.className = 'file-attachment';
 
-    const icon = document.createElement('span');
-    icon.className = 'file-icon';
-    icon.textContent = getFileIcon(msg.file.fileName);
+    const mimeType = msg.file.mimeType || 'application/octet-stream';
+    const fileName = msg.file.fileName;
+
+    // 检测是否为图片文件
+    const isImage = isImageFile(mimeType, fileName);
+
+    if (isImage && msg.file.base64) {
+      // 图片文件显示缩略图
+      const img = document.createElement('img');
+      img.className = 'file-thumbnail';
+      img.src = 'data:' + mimeType + ';base64,' + msg.file.base64;
+
+      // 点击图片预览大图
+      img.onclick = function() {
+        showImagePreview(this.src);
+      };
+
+      fileEl.appendChild(img);
+    } else {
+      // 非图片文件显示图标
+      const icon = document.createElement('span');
+      icon.className = 'file-icon';
+      icon.textContent = getFileIcon(fileName);
+      fileEl.appendChild(icon);
+    }
 
     const info = document.createElement('div');
     info.className = 'file-info';
 
     const nameEl = document.createElement('div');
     nameEl.className = 'file-name';
-    nameEl.textContent = msg.file.fileName;
+    nameEl.textContent = fileName;
 
     info.appendChild(nameEl);
+
+    // 如果有文件大小，显示大小
+    if (msg.file.fileSize) {
+      const sizeEl = document.createElement('div');
+      sizeEl.className = 'file-size';
+      sizeEl.textContent = formatFileSize(msg.file.fileSize);
+      info.appendChild(sizeEl);
+    }
 
     const downloadBtn = document.createElement('button');
     downloadBtn.className = 'download-btn';
@@ -686,7 +746,6 @@ function createMessageElement(msg) {
 
     // 优先使用 base64 数据，否则使用 url
     let fileData = '';
-    let mimeType = msg.file.mimeType || 'application/octet-stream';
 
     if (msg.file.base64) {
       // 直接使用 base64 数据
@@ -698,7 +757,7 @@ function createMessageElement(msg) {
       fileData = msg.file.url;
     }
 
-    downloadBtn.dataset.fileName = msg.file.fileName;
+    downloadBtn.dataset.fileName = fileName;
 
     downloadBtn.onclick = function() {
       const base64 = this.dataset.base64;
@@ -722,7 +781,6 @@ function createMessageElement(msg) {
       }
     };
 
-    fileEl.appendChild(icon);
     fileEl.appendChild(info);
     fileEl.appendChild(downloadBtn);
     div.appendChild(fileEl);
@@ -1125,8 +1183,14 @@ async function sendFile(fileName, fileSize, mimeType, base64) {
   // 显示用户消息（带文件信息）
   const msg = {
     from: 'user',
-    content: '[发送了文件: ' + fileName + ' (' + formatFileSize(fileSize) + ')]',
+    content: '',
     timestamp: Date.now(),
+    file: {
+      fileName: fileName,
+      fileSize: fileSize,
+      mimeType: mimeType,
+      base64: base64
+    }
   };
   addMessageToUI(msg);
   saveMessage(msg);
@@ -1337,9 +1401,28 @@ function handleIncomingFileEnd(msg) {
   const fileEl = document.createElement('div');
   fileEl.className = 'file-attachment';
 
-  const icon = document.createElement('span');
-  icon.className = 'file-icon';
-  icon.textContent = getFileIcon(incomingFile.fileName);
+  // 检测是否为图片文件
+  const isImage = isImageFile(incomingFile.mimeType, incomingFile.fileName);
+
+  if (isImage) {
+    // 图片文件显示缩略图
+    const img = document.createElement('img');
+    img.className = 'file-thumbnail';
+    img.src = 'data:' + incomingFile.mimeType + ';base64,' + base64;
+
+    // 点击图片预览大图
+    img.onclick = function() {
+      showImagePreview(this.src);
+    };
+
+    fileEl.appendChild(img);
+  } else {
+    // 非图片文件显示图标
+    const icon = document.createElement('span');
+    icon.className = 'file-icon';
+    icon.textContent = getFileIcon(incomingFile.fileName);
+    fileEl.appendChild(icon);
+  }
 
   const info = document.createElement('div');
   info.className = 'file-info';
@@ -1374,7 +1457,6 @@ function handleIncomingFileEnd(msg) {
     a.click();
   };
 
-  fileEl.appendChild(icon);
   fileEl.appendChild(info);
   fileEl.appendChild(downloadBtn);
   div.appendChild(fileEl);
@@ -1390,9 +1472,10 @@ function handleIncomingFileEnd(msg) {
   // 保存消息 - 存储 base64 数据而不是 blob URL（blob URL 会在页面刷新后失效）
   const msgData = {
     from: 'assistant',
-    content: '[收到文件: ' + incomingFile.fileName + ']',
+    content: '',
     file: {
       fileName: incomingFile.fileName,
+      fileSize: incomingFile.fileSize,
       mimeType: incomingFile.mimeType,
       base64: base64,  // 存储 base64 数据
     },
@@ -1461,6 +1544,32 @@ function getFileIcon(fileName) {
     html: '🌐', css: '🎨', json: '📋', xml: '📋',
   };
   return icons[ext] || '📁';
+}
+
+// 检测是否为图片文件
+function isImageFile(mimeType, fileName) {
+  const imageMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+  const ext = fileName.split('.').pop().toLowerCase();
+  return imageMimes.includes(mimeType) || imageExts.includes(ext);
+}
+
+// 显示图片预览大图
+function showImagePreview(src) {
+  const modal = document.createElement('div');
+  modal.className = 'image-preview-modal';
+
+  const img = document.createElement('img');
+  img.src = src;
+
+  modal.appendChild(img);
+
+  // 点击任意位置关闭预览
+  modal.onclick = function() {
+    modal.remove();
+  };
+
+  document.body.appendChild(modal);
 }
 
 function base64ToBlob(base64, mimeType) {

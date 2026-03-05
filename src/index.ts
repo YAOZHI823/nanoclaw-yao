@@ -13,6 +13,8 @@ import {
 } from './config.js';
 import { WhatsAppChannel } from './channels/whatsapp.js';
 import { WebSocketChannel } from './channels/websocket.js';
+import { FeishuChannel } from './channels/feishu.js';
+import { FEISHU_APP_ID, FEISHU_APP_SECRET } from './config.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -449,7 +451,7 @@ async function startMessageLoop(): Promise<void> {
       // Get all registered group JIDs plus any WebSocket device JIDs from recent messages
       let jids = Object.keys(registeredGroups);
 
-      // Also check for device chats in recent messages
+      // Also check for device chats and Feishu chats in recent messages
       try {
         const recentDeviceChats = db
           .prepare(
@@ -465,8 +467,24 @@ async function startMessageLoop(): Promise<void> {
             }
           }
         }
+
+        // Also query Feishu chats
+        const recentFeishuChats = db
+          .prepare(
+            `SELECT DISTINCT chat_jid FROM messages WHERE chat_jid LIKE 'feishu:%' AND timestamp > ?`,
+          )
+          .all(lastTimestamp) as { chat_jid: string }[];
+
+        if (recentFeishuChats && recentFeishuChats.length > 0) {
+          logger.debug({ recentFeishuChats, lastTimestamp }, 'Found Feishu chats in messages');
+          for (const row of recentFeishuChats) {
+            if (!jids.includes(row.chat_jid)) {
+              jids.push(row.chat_jid);
+            }
+          }
+        }
       } catch (err) {
-        logger.warn({ err }, 'Failed to query device chats');
+        logger.warn({ err }, 'Failed to query device/Feishu chats');
       }
       const { messages, newTimestamp } = getNewMessages(
         jids,
@@ -522,6 +540,21 @@ async function startMessageLoop(): Promise<void> {
             };
             registerGroup(chatJid, group);
             logger.info({ chatJid, deviceId }, 'Auto-registered device chat');
+          }
+
+          // Auto-create a virtual group for Feishu chats (both private and group)
+          if (!group && /^feishu:/.test(chatJid)) {
+            const feishuId = chatJid.replace(/^feishu:/, '');
+
+            group = {
+              name: `Feishu: ${feishuId}`,
+              folder: `feishu-${feishuId}`,
+              trigger: '',
+              added_at: new Date().toISOString(),
+              requiresTrigger: false, // Feishu私聊不需要触发词
+            };
+            registerGroup(chatJid, group);
+            logger.info({ chatJid }, 'Auto-registered Feishu chat');
           }
 
           if (!group) continue;
@@ -642,6 +675,17 @@ async function main(): Promise<void> {
   websocket = new WebSocketChannel(channelOpts);
   channels.push(websocket);
 
+  // Feishu channel (optional - only if credentials are configured)
+  let feishu: FeishuChannel | null = null;
+  if (FEISHU_APP_ID && FEISHU_APP_SECRET) {
+    feishu = new FeishuChannel(FEISHU_APP_ID, FEISHU_APP_SECRET, {
+      onMessage: channelOpts.onMessage,
+      onChatMetadata: channelOpts.onChatMetadata,
+      registeredGroups: channelOpts.registeredGroups,
+    });
+    channels.push(feishu);
+  }
+
   // Start WhatsApp in background, don't block on it
   whatsapp.connect().catch((err) => {
     logger.error({ err }, 'WhatsApp connection failed');
@@ -652,6 +696,15 @@ async function main(): Promise<void> {
     await websocket.connect();
   } catch (err) {
     logger.error({ err }, 'Failed to start WebSocket channel');
+  }
+
+  // Start Feishu if configured
+  if (feishu) {
+    try {
+      await feishu.connect();
+    } catch (err) {
+      logger.error({ err }, 'Failed to start Feishu channel');
+    }
   }
 
   // Start subsystems (independently of connection handler)

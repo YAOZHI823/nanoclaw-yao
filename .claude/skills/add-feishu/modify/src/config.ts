@@ -6,13 +6,17 @@ import { readEnvFile } from './env.js';
 // Read config values from .env (falls back to process.env).
 // Secrets are NOT read here — they stay on disk and are loaded only
 // where needed (container-runner.ts) to avoid leaking to child processes.
-const envConfig = readEnvFile(['ASSISTANT_NAME', 'ASSISTANT_HAS_OWN_NUMBER', 'FEISHU_APP_ID', 'FEISHU_APP_SECRET']);
+const envConfig = readEnvFile([
+  'ASSISTANT_NAME',
+  'ASSISTANT_HAS_OWN_NUMBER',
+  'FEISHU_APP_ID',
+  'FEISHU_APP_SECRET',
+]);
 
 export const ASSISTANT_NAME =
   process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'Andy';
 export const ASSISTANT_HAS_OWN_NUMBER =
-  (process.env.ASSISTANT_HAS_OWN_NUMBER ||
-    envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';
+  (process.env.ASSISTANT_HAS_OWN_NUMBER || envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 
@@ -43,7 +47,10 @@ export const CONTAINER_MAX_OUTPUT_SIZE = parseInt(
   10,
 ); // 10MB default
 export const IPC_POLL_INTERVAL = 1000;
-export const IDLE_TIMEOUT = parseInt(process.env.IDLE_TIMEOUT || '1800000', 10); // 30min default — how long to keep container alive after last result
+export const IDLE_TIMEOUT = parseInt(
+  process.env.IDLE_TIMEOUT || '1800000',
+  10,
+); // 30min default — how long to keep container alive after last result
 export const MAX_CONCURRENT_CONTAINERS = Math.max(
   1,
   parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '5', 10) || 5,
@@ -63,20 +70,5 @@ export const TRIGGER_PATTERN = new RegExp(
 export const TIMEZONE =
   process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-// WebSocket channel configuration
-export const WEBSOCKET_PORT = parseInt(process.env.WEBSOCKET_PORT || '9876', 10);
-export const WEBSOCKET_PAIRING_CODE_LENGTH = 6;
-export const WEBSOCKET_PAIRING_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
-
-// Device JID pattern and utilities
-export const DEVICE_JID_PATTERN = /^device-[^@]+@nanoclaw$/;
-
-export function extractDeviceId(chatJid: string): string | null {
-  return DEVICE_JID_PATTERN.test(chatJid)
-    ? chatJid.replace(/^device-/, '').replace(/@nanoclaw$/, '')
-    : null;
-}
-
-// Feishu configuration
 export const FEISHU_APP_ID = process.env.FEISHU_APP_ID || envConfig.FEISHU_APP_ID || '';
 export const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || envConfig.FEISHU_APP_SECRET || '';
