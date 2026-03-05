@@ -73,6 +73,17 @@ export const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || '';
 
 机器人会将每个用户或群组映射到独立的上下文与容器沙箱，确保数据与环境隔离。
 
+### 文件传输支持
+
+飞书渠道支持以下文件传输功能：
+
+| 功能 | 描述 |
+|------|------|
+| 接收图片 | 用户发送的图片会自动下载到 group/uploads 目录 |
+| 接收文件 | 用户发送的文档会自动下载到 group/uploads 目录 |
+| 发送图片 | Agent 可以发送图片给用户（支持 JPEG/PNG/GIF/WEBP 等，10MB以内） |
+| 发送文件 | Agent 可以发送文件给用户（支持 PDF/DOC/XLS/PPT 等，20MB以内） |
+
 ## 常见问题
 
 - 看不到消息回调：请确认权限已开通并已发布版本；本技能使用 WebSocket 模式，无需配置回调地址
@@ -155,3 +166,14 @@ Once running, you can chat with your bot in Feishu.
 - **Group Chat**: Add the bot to a group and mention it (`@BotName`).
 
 The bot will treat Feishu users/groups just like WhatsApp chats, creating isolated containers for each context.
+
+### File Transfer Support
+
+Feishu channel supports the following file transfer features:
+
+| Feature | Description |
+|---------|-------------|
+| Receive Images | Images sent by users are automatically downloaded to group/uploads |
+| Receive Files | Files sent by users are automatically downloaded to group/uploads |
+| Send Images | Agent can send images to users (supports JPEG/PNG/GIF/WEBP, max 10MB) |
+| Send Files | Agent can send files to users (supports PDF/DOC/XLS/PPT, max 20MB) |
