@@ -9,7 +9,7 @@ import {
 } from '../types.js';
 import * as fs from 'fs';
 import * as path from 'path';
-import { DATA_DIR } from '../config.js';
+import { resolveGroupFolderPath } from '../group-folder.js';
 
 export interface FeishuChannelOpts {
   onMessage: OnInboundMessage;
@@ -118,8 +118,219 @@ export class FeishuChannel implements Channel {
     logger.debug({ jid, isTyping }, 'Feishu typing indicator not implemented');
   }
 
+  // Cache for root folder token
+  private rootFolderToken: string | null = null;
+
+  private async getRootFolderToken(): Promise<string> {
+    if (this.rootFolderToken) {
+      return this.rootFolderToken;
+    }
+
+    // Use raw API to get root folder token
+    // First get the tenant access token
+    const appId = (this.client as any).appId;
+    const appSecret = (this.client as any).appSecret;
+
+    // Get tenant access token
+    const tokenResponse = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+    });
+    const tokenData = await tokenResponse.json() as { tenant_access_token?: string };
+    const tenantToken = tokenData.tenant_access_token;
+    if (!tenantToken) {
+      throw new Error('Failed to get tenant access token');
+    }
+
+    // Get root folder meta
+    const folderResponse = await fetch('https://open.feishu.cn/open-apis/drive/explorer/v2/root_folder/meta', {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${tenantToken}` },
+    });
+    const folderData = await folderResponse.json() as { data?: { token?: string } };
+    this.rootFolderToken = folderData.data?.token || null;
+
+    if (!this.rootFolderToken) {
+      logger.error({ response: folderData }, 'Failed to get root folder token');
+      throw new Error('Failed to get root folder token');
+    }
+
+    logger.info({ token: this.rootFolderToken }, 'Got root folder token');
+    return this.rootFolderToken;
+  }
+
+  // Helper to get file type from mime type or extension
+  private getFileType(fileName: string, mimeType: string): string {
+    const ext = fileName.split('.').pop()?.toLowerCase() || '';
+    const mimeToType: Record<string, string> = {
+      'pdf': 'pdf',
+      'doc': 'doc',
+      'docx': 'docx',
+      'xls': 'xls',
+      'xlsx': 'xlsx',
+      'ppt': 'ppt',
+      'pptx': 'pptx',
+      'mp4': 'mp4',
+      'mp3': 'mp3',
+      'wav': 'wav',
+      'png': 'png',
+      'jpg': 'jpg',
+      'jpeg': 'jpeg',
+      'gif': 'gif',
+    };
+    return mimeToType[ext] || 'stream';
+  }
+
   async sendFile(jid: string, fileName: string, filePath: string, mimeType: string): Promise<void> {
-    logger.warn({ jid, fileName }, 'Feishu file sending not implemented');
+    if (!this.connected) throw new Error('Feishu channel not connected');
+
+    const [prefix, receiveId] = jid.split(':');
+    if (prefix !== 'feishu' || !receiveId) {
+      throw new Error(`Invalid Feishu JID: ${jid}`);
+    }
+
+    const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+
+    try {
+      // Read file from disk
+      let fileBuffer: Buffer;
+      try {
+        fileBuffer = fs.readFileSync(filePath);
+      } catch (err) {
+        logger.error({ err, filePath }, 'Failed to read file');
+        throw new Error(`Failed to read file: ${filePath}`);
+      }
+
+      // Check file size
+      const fileSize = fileBuffer.length;
+      if (fileSize > MAX_FILE_SIZE) {
+        logger.error({ fileSize, maxSize: MAX_FILE_SIZE }, 'File too large for Feishu');
+        throw new Error(`File too large: ${fileSize} bytes (max: ${MAX_FILE_SIZE} bytes)`);
+      }
+
+      // Determine file type
+      const fileType = this.getFileType(fileName, mimeType);
+
+      logger.info({ jid, fileName, filePath, fileSize, fileType }, 'Uploading file to Feishu');
+
+      // Get tenant token
+      const appId = (this.client as any).appId;
+      const appSecret = (this.client as any).appSecret;
+
+      const tokenResponse = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+      });
+      const tokenData = await tokenResponse.json() as { tenant_access_token?: string };
+      const tenantToken = tokenData.tenant_access_token;
+      if (!tenantToken) {
+        throw new Error('Failed to get tenant access token');
+      }
+
+      // Upload file using im/v1/files API with FormData
+      const formData = new FormData();
+      formData.append('file_type', fileType);
+      formData.append('file_name', fileName);
+      formData.append('file', new Blob([fileBuffer]), fileName);
+
+      const uploadResponse = await fetch('https://open.feishu.cn/open-apis/im/v1/files', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${tenantToken}` },
+        body: formData,
+      });
+      const uploadData = await uploadResponse.json() as { data?: { file_key?: string } };
+
+      if (!uploadData.data?.file_key) {
+        logger.error({ response: uploadData }, 'Failed to upload file');
+        throw new Error('Failed to upload file: no file_key returned');
+      }
+
+      const fileKey = uploadData.data.file_key;
+      logger.info({ fileKey }, 'File uploaded successfully, sending message');
+
+      // Send file message using im.message.create
+      await this.client.im.message.create({
+        params: {
+          receive_id_type: 'open_id',
+        },
+        data: {
+          receive_id: receiveId,
+          msg_type: 'file',
+          content: JSON.stringify({ file_key: fileKey }),
+        },
+      });
+
+      logger.info({ jid, fileName, fileKey }, 'Feishu file sent successfully');
+    } catch (err) {
+      logger.error({ err, jid, fileName, filePath }, 'Failed to send Feishu file');
+      throw err;
+    }
+  }
+
+  async sendImage(jid: string, imagePath: string): Promise<void> {
+    if (!this.connected) throw new Error('Feishu channel not connected');
+
+    const [prefix, receiveId] = jid.split(':');
+    if (prefix !== 'feishu' || !receiveId) {
+      throw new Error(`Invalid Feishu JID: ${jid}`);
+    }
+
+    // Check if file exists
+    if (!fs.existsSync(imagePath)) {
+      throw new Error(`Image file not found: ${imagePath}`);
+    }
+
+    // Get file stats for size validation
+    const stats = fs.statSync(imagePath);
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (stats.size > maxSize) {
+      throw new Error(`Image file too large: ${stats.size} bytes (max: ${maxSize} bytes)`);
+    }
+
+    // Determine image type from extension
+    const ext = path.extname(imagePath).toLowerCase().slice(1);
+    const supportedFormats = ['jpeg', 'jpg', 'png', 'gif', 'webp', 'tiff', 'bmp', 'ico'];
+    if (!supportedFormats.includes(ext)) {
+      throw new Error(`Unsupported image format: ${ext}. Supported: ${supportedFormats.join(', ')}`);
+    }
+
+    try {
+      // Read image file
+      const imageBuffer = fs.readFileSync(imagePath);
+
+      // Upload image using im.image.create API
+      const imageResult = await (this.client as any).im.image.create({
+        data: {
+          image_type: 'message',
+          image: imageBuffer,
+        },
+      });
+
+      // The SDK returns the response directly, not wrapped in .data
+      const imageKey = imageResult?.image_key;
+      if (!imageKey) {
+        throw new Error('Failed to upload image: no image_key returned');
+      }
+
+      // Send image message using im.message.create API
+      await this.client.im.message.create({
+        params: {
+          receive_id_type: 'open_id',
+        },
+        data: {
+          receive_id: receiveId,
+          msg_type: 'image',
+          content: JSON.stringify({ image_key: imageKey }),
+        },
+      });
+
+      logger.info({ jid, imagePath, imageKey, size: stats.size }, 'Feishu image sent');
+    } catch (err) {
+      logger.error({ err, jid, imagePath }, 'Failed to send Feishu image');
+      throw err;
+    }
   }
 
   private async handleMessage(data: any): Promise<void> {
@@ -128,8 +339,8 @@ export class FeishuChannel implements Channel {
       const message = data.message;
       if (!message) return;
 
-      // Only handle text messages for now
-      if (message.message_type !== 'text' && message.message_type !== 'file') {
+      // Only handle text, file and image messages
+      if (message.message_type !== 'text' && message.message_type !== 'file' && message.message_type !== 'image') {
         logger.debug({ messageType: message.message_type }, 'Unsupported message type');
         return;
       }
@@ -147,6 +358,10 @@ export class FeishuChannel implements Channel {
 
       // Construct JID
       const chatJid = `feishu:${isGroup ? chatId : senderId}`;
+
+      // Resolve group folder path for file storage (container can access this)
+      const folder = chatJid.replace(':', '-');
+      const groupDir = resolveGroupFolderPath(folder);
 
       const timestamp = new Date(parseInt(message.create_time)).toISOString();
 
@@ -168,11 +383,32 @@ export class FeishuChannel implements Channel {
 
         // Check for @ mentions and remove them
         content = content.replace(/<at id="all"><\/at>/g, '').trim();
+      } else if (message.message_type === 'image') {
+        const messageContent = JSON.parse(message.content);
+        if (messageContent.image_key) {
+          // Download the image using messageResource API
+          try {
+            const imageInfo = await this.downloadImage(groupDir, message.message_id, messageContent.image_key);
+            content = '[发送了图片]';
+            attachments.push(imageInfo);
+          } catch (err) {
+            logger.error({ err, imageKey: messageContent.image_key }, 'Failed to download Feishu image');
+            content = '[发送了图片，但下载失败]';
+          }
+        }
       } else if (message.message_type === 'file') {
         const messageContent = JSON.parse(message.content);
-        if (messageContent.file) {
-          const fileKey = messageContent.file.file_key;
-          content = `[发送了文件: ${fileKey}]`;
+        if (messageContent.file_key) {
+          const fileKey = messageContent.file_key;
+          // Download the file using messageResource API
+          try {
+            const fileInfo = await this.downloadFile(groupDir, message.message_id, fileKey);
+            content = '[发送了文件]';
+            attachments.push(fileInfo);
+          } catch (err) {
+            logger.error({ err, fileKey }, 'Failed to download Feishu file');
+            content = '[发送了文件，但下载失败]';
+          }
         }
       }
 
@@ -205,5 +441,137 @@ export class FeishuChannel implements Channel {
     } catch (err) {
       logger.error({ err }, 'Error handling Feishu message');
     }
+  }
+
+  private async downloadImage(groupDir: string, messageId: string, imageKey: string): Promise<{
+    filename: string;
+    path: string;
+    mimeType: string;
+    size: number;
+  }> {
+    // Get image from Feishu API using messageResource.get
+    // This is needed for user-sent images (not bot-uploaded images)
+    const imageResponse = await (this.client as any).im.messageResource.get({
+      path: {
+        message_id: messageId,
+        file_key: imageKey,
+      },
+      params: {
+        type: 'image',
+      },
+    });
+
+    // Determine file extension - default to jpg for images
+    const extension = 'jpg';
+    const fileName = `${imageKey}.${extension}`;
+    const uploadDir = path.join(groupDir, 'uploads');
+    const filePath = path.join(uploadDir, fileName);
+
+    // Ensure directory exists
+    const fs = await import('fs');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    // Write the image using SDK's writeFile method
+    await imageResponse.writeFile(filePath);
+
+    const stats = fs.statSync(filePath);
+    const mimeType = 'image/jpeg';
+
+    logger.info({ imageKey, fileName, size: stats.size }, 'Feishu image downloaded');
+
+    return {
+      filename: fileName,
+      path: filePath,
+      mimeType,
+      size: stats.size,
+    };
+  }
+
+  private async downloadFile(groupDir: string, messageId: string, fileKey: string): Promise<{
+    filename: string;
+    path: string;
+    mimeType: string;
+    size: number;
+  }> {
+    // Get file from Feishu API using messageResource.get
+    const fileResponse = await (this.client as any).im.messageResource.get({
+      path: {
+        message_id: messageId,
+        file_key: fileKey,
+      },
+      params: { type: 'file' },
+    });
+
+    // Try to get filename from response headers
+    let fileName = fileKey;
+    let mimeType = 'application/octet-stream';
+
+    const contentDisposition = fileResponse?.headers?.['content-disposition'];
+    if (contentDisposition) {
+      // Parse filename from content-disposition header
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=(?:(\\?['"])(.*?)\1|([^;\n]*))/i);
+      if (filenameMatch && filenameMatch[2]) {
+        fileName = filenameMatch[2];
+      }
+    }
+
+    // Determine file extension
+    let extension = '';
+    const lastDot = fileName.lastIndexOf('.');
+    if (lastDot > 0) {
+      extension = fileName.substring(lastDot + 1).toLowerCase();
+    }
+
+    // Map common extensions to MIME types
+    const mimeTypeMap: Record<string, string> = {
+      pdf: 'application/pdf',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ppt: 'application/vnd.ms-powerpoint',
+      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      txt: 'text/plain',
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      gif: 'image/gif',
+      mp3: 'audio/mpeg',
+      mp4: 'video/mp4',
+      zip: 'application/zip',
+      rar: 'application/x-rar-compressed',
+    };
+
+    if (extension && mimeTypeMap[extension]) {
+      mimeType = mimeTypeMap[extension];
+    }
+
+    // Generate unique filename to avoid conflicts
+    const timestamp = Date.now();
+    const finalFileName = extension ? `${fileKey}_${timestamp}.${extension}` : `${fileKey}_${timestamp}`;
+    const uploadDir = path.join(groupDir, 'uploads');
+    const filePath = path.join(uploadDir, finalFileName);
+
+    // Ensure directory exists
+    const fs = await import('fs');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    // Write the file using SDK's writeFile method
+    await fileResponse.writeFile(filePath);
+
+    const stats = fs.statSync(filePath);
+
+    logger.info({ fileKey, fileName: finalFileName, originalName: fileName, size: stats.size }, 'Feishu file downloaded');
+
+    return {
+      filename: finalFileName,
+      path: filePath,
+      mimeType,
+      size: stats.size,
+    };
   }
 }
