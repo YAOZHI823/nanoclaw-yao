@@ -96,9 +96,15 @@ export class FeishuChannel implements Channel {
         content = text.replace(thinkingMatch[0], '').trim();
       }
 
+      // Determine receive_id_type based on ID prefix:
+      // - oc_* = open chat ID (group) -> chat_id
+      // - ou_* = open user ID (user) -> open_id
+      const isGroup = receiveId.startsWith('oc_');
+      const receiveIdType = isGroup ? 'chat_id' : 'open_id';
+
       await this.client.im.message.create({
         params: {
-          receive_id_type: 'open_id',
+          receive_id_type: receiveIdType,
         },
         data: {
           receive_id: receiveId,
