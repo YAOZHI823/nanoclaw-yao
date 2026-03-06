@@ -76,6 +76,15 @@ export const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || '';
 
 机器人会将每个用户或群组映射到独立的上下文与容器沙箱，确保数据与环境隔离。
 
+### 输入状态显示
+
+飞书渠道支持显示 AI 正在处理的状态：
+
+1. 用户发送消息后，会先显示 `🤖 AI 正在思考中...`
+2. AI 处理完成并发送实际回复后，这条消息会更新为 `🤖 AI 已完成`
+
+这让用户知道 AI 正在处理他们的请求。
+
 ### 文件传输支持
 
 飞书渠道支持以下文件传输功能：
@@ -172,6 +181,15 @@ Once running, you can chat with your bot in Feishu.
 - **Group Chat**: Add the bot to a group and mention it (`@BotName`).
 
 The bot will treat Feishu users/groups just like WhatsApp chats, creating isolated containers for each context.
+
+### Typing Indicator
+
+Feishu channel supports showing AI processing status:
+
+1. When user sends a message, it shows `🤖 AI 正在思考中...` (AI is thinking...)
+2. After AI finishes processing and sends the actual response, this message updates to `🤖 AI 已完成` (AI completed)
+
+This lets users know that AI is processing their request.
 
 ### File Transfer Support
 
