@@ -19,6 +19,7 @@ import { RegisteredGroup } from './types.js';
 export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
   sendFile: (jid: string, fileName: string, filePath: string, mimeType: string) => Promise<void>;
+  sendImage?: (jid: string, imagePath: string) => Promise<void>;
   registeredGroups: () => Record<string, RegisteredGroup>;
   registerGroup: (jid: string, group: RegisteredGroup) => void;
   syncGroupMetadata: (force: boolean) => Promise<void>;
@@ -125,8 +126,15 @@ export function startIpcWatcher(deps: IpcDeps): void {
                     hostFilePath = path.join(groupHostDir, relativePath);
                   }
 
-                  logger.info({ hostFilePath, exists: fs.existsSync(hostFilePath) }, 'Sending file to client');
-                  await deps.sendFile(data.chatJid, data.fileName, hostFilePath, mimeType);
+                  logger.info({ hostFilePath, exists: fs.existsSync(hostFilePath), mimeType }, 'Sending file to client');
+
+                  // Use sendImage for image types, sendFile for others
+                  const isImage = mimeType.startsWith('image/');
+                  if (isImage && deps.sendImage) {
+                    await deps.sendImage(data.chatJid, hostFilePath);
+                  } else {
+                    await deps.sendFile(data.chatJid, data.fileName, hostFilePath, mimeType);
+                  }
                   logger.info(
                     { chatJid: data.chatJid, fileName: data.fileName, sourceGroup },
                     'IPC file sent',

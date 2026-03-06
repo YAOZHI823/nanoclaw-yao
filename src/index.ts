@@ -754,6 +754,14 @@ async function main(): Promise<void> {
       }
       return channel.sendFile(jid, fileName, filePath, mimeType);
     },
+    sendImage: async (jid, imagePath) => {
+      const channel = findChannel(channels, jid);
+      if (!channel || !channel.sendImage) {
+        logger.warn({ channel: channel?.name, jid }, 'Channel does not support image transfer');
+        return;
+      }
+      return channel.sendImage(jid, imagePath);
+    },
     registeredGroups: () => registeredGroups,
     registerGroup,
     syncGroupMetadata: (force) =>
