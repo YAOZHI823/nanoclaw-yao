@@ -4,6 +4,7 @@
       "command": "uvx",
       "args": ["minimax-coding-plan-mcp", "-y"],
       "env": {
+        "UV_CACHE_DIR": ".cache",
         "MINIMAX_API_KEY": "__ANTHROPIC_API_KEY__",
         "MINIMAX_API_HOST": "https://api.minimaxi.com"
       }
