@@ -29,6 +29,7 @@ This skill adds Feishu support to NanoClaw. It uses the official `@larksuiteoapi
   - `im:message` (获取与发送单聊、群组消息)
   - `drive:file` (上传、下载文件)
   - `im:resource` (获取与上传图片或文件资源)
+  - `im:message:update` (更新消息)
 - 进入「版本管理与发布」，创建版本并发布（企业自建应用通常无需审核）
 
 ### 3. 获取凭证
@@ -120,6 +121,7 @@ export const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || '';
   - `im:message` (获取与发送单聊、群组消息)
   - `drive:file` (上传、下载文件)
   - `im:resource` (获取与上传图片或文件资源)
+  - `im:message:update` (更新消息)
 3. Go to **"Version Management & Release" (版本管理与发布)** -> Create a version -> Submit for release (Auto-approved for self-built apps).
 
 ### 3. Get Credentials
