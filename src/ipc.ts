@@ -22,6 +22,7 @@ export interface IpcDeps {
   sendImage?: (jid: string, imagePath: string) => Promise<void>;
   registeredGroups: () => Record<string, RegisteredGroup>;
   registerGroup: (jid: string, group: RegisteredGroup) => void;
+  reloadGroups?: () => void; // Reload groups from DB to refresh cache
   syncGroupMetadata: (force: boolean) => Promise<void>;
   getAvailableGroups: () => AvailableGroup[];
   writeGroupsSnapshot: (
@@ -560,6 +561,11 @@ async function handleContainerConfig(
     ...currentGroup,
     containerConfig: newConfig,
   });
+
+  // Reload groups cache if available
+  if (_deps.reloadGroups) {
+    _deps.reloadGroups();
+  }
 
   logger.info(
     { action, mountCount: newMounts.length, groupFolder },

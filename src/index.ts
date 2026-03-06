@@ -764,6 +764,10 @@ async function main(): Promise<void> {
     },
     registeredGroups: () => registeredGroups,
     registerGroup,
+    reloadGroups: () => {
+      registeredGroups = getAllRegisteredGroups();
+      logger.debug({ groupCount: Object.keys(registeredGroups).length }, 'Reloaded groups from DB');
+    },
     syncGroupMetadata: (force) =>
       whatsapp?.syncGroupMetadata(force) ?? Promise.resolve(),
     getAvailableGroups,
