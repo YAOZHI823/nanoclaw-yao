@@ -301,36 +301,50 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   await channel.setTyping?.(chatJid, true);
   let hadError = false;
   let outputSentToUser = false;
+  let typingStopped = false;
 
-  const output = await runAgent(group, prompt, chatJid, async (result) => {
-    // Streaming output callback — called for each agent result
-    if (result.result) {
-      const raw =
-        typeof result.result === 'string'
-          ? result.result
-          : JSON.stringify(result.result);
-      // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
-      const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
-      logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
-      if (text) {
-        logger.info({ chatJid, channel: channel.name, textLength: text.length }, 'Sending response via channel');
-        await channel.sendMessage(chatJid, text);
-        outputSentToUser = true;
+  let output: 'success' | 'error' = 'success';
+  try {
+    output = await runAgent(group, prompt, chatJid, async (result) => {
+      // Streaming output callback — called for each agent result
+      if (result.result) {
+        const raw =
+          typeof result.result === 'string'
+            ? result.result
+            : JSON.stringify(result.result);
+        // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
+        const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+        logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
+        if (text) {
+          // Send the actual response message first
+          logger.info({ chatJid, channel: channel.name, textLength: text.length }, 'Sending response via channel');
+          await channel.sendMessage(chatJid, text);
+          outputSentToUser = true;
+
+          // Then update the "thinking" message to "completed"
+          if (!typingStopped && channel.name === 'feishu') {
+            typingStopped = true;
+            logger.debug({ chatJid }, 'Updating thinking indicator to completed');
+            await (channel as any).updateProcessingMessage?.(chatJid, '🤖 AI 已完成');
+          }
+        }
+        // Only reset idle timer on actual results, not session-update markers (result: null)
+        resetIdleTimer();
       }
-      // Only reset idle timer on actual results, not session-update markers (result: null)
-      resetIdleTimer();
-    }
 
-    if (result.status === 'success') {
-      queue.notifyIdle(chatJid);
-    }
+      if (result.status === 'success') {
+        queue.notifyIdle(chatJid);
+      }
 
-    if (result.status === 'error') {
-      hadError = true;
-    }
-  });
+      if (result.status === 'error') {
+        hadError = true;
+      }
+    });
+  } catch (err) {
+    logger.error({ chatJid, err }, 'Error in runAgent');
+    output = 'error';
+  }
 
-  await channel.setTyping?.(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
 
   if (output === 'error' || hadError) {
@@ -434,6 +448,8 @@ async function runAgent(
   } catch (err) {
     logger.error({ group: group.name, err }, 'Agent error');
     return 'error';
+  } finally {
+    logger.info({ group: group.name }, '[runAgent] Function completed');
   }
 }
 

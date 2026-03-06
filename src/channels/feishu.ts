@@ -120,8 +120,90 @@ export class FeishuChannel implements Channel {
     }
   }
 
+  // Store temporary processing message IDs for each chat
+  private processingMessages = new Map<string, string>();
+
   async setTyping(jid: string, isTyping: boolean): Promise<void> {
-    logger.debug({ jid, isTyping }, 'Feishu typing indicator not implemented');
+    if (!this.connected) return;
+
+    const [prefix, receiveId] = jid.split(':');
+    if (prefix !== 'feishu' || !receiveId) {
+      return;
+    }
+
+    const isGroup = receiveId.startsWith('oc_');
+    const receiveIdType = isGroup ? 'chat_id' : 'open_id';
+
+    try {
+      if (isTyping) {
+        // Send a temporary "thinking" message
+        const response = await this.client.im.message.create({
+          params: { receive_id_type: receiveIdType },
+          data: {
+            receive_id: receiveId,
+            msg_type: 'text',
+            content: JSON.stringify({ text: '🤖 AI 正在思考中...' }),
+          },
+        });
+
+        // Store the message ID so we can update it later
+        const messageId = response.data?.message_id;
+        if (messageId) {
+          this.processingMessages.set(jid, messageId);
+          logger.debug({ jid, messageId }, 'Sent processing indicator, stored for update');
+        }
+      }
+    } catch (err) {
+      logger.debug({ jid, isTyping, err }, 'Failed to set typing indicator');
+    }
+  }
+
+  // Update the processing message with actual response content
+  async updateProcessingMessage(jid: string, newContent: string): Promise<void> {
+    logger.debug({ jid, connected: this.connected, processingMessages: Array.from(this.processingMessages.keys()) }, 'updateProcessingMessage called');
+
+    if (!this.connected) {
+      logger.debug({ jid }, 'Not connected, skipping update');
+      return;
+    }
+
+    const messageId = this.processingMessages.get(jid);
+    if (!messageId) {
+      logger.debug({ jid, processingMessages: Array.from(this.processingMessages.keys()) }, 'No processing message to update');
+      return;
+    }
+
+    logger.debug({ jid, messageId, newContent: newContent.slice(0, 50) }, 'Updating processing message');
+    try {
+      // Get tenant token
+      const appId = (this.client as any).appId;
+      const appSecret = (this.client as any).appSecret;
+      const tokenResponse = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+      });
+      const tokenData = await tokenResponse.json() as { tenant_access_token?: string };
+      const tenantToken = tokenData.tenant_access_token;
+
+      if (tenantToken) {
+        // Use SDK with tenant token to update message (PUT method)
+        await this.client.im.v1.message.update(
+          {
+            path: { message_id: messageId },
+            data: {
+              msg_type: 'text',
+              content: JSON.stringify({ text: newContent }),
+            },
+          },
+          lark.withTenantToken(tenantToken),
+        );
+        logger.debug({ jid, messageId }, 'Updated processing message successfully');
+      }
+      this.processingMessages.delete(jid);
+    } catch (err) {
+      logger.error({ jid, messageId, err }, 'Failed to update processing message');
+    }
   }
 
   // Cache for root folder token
