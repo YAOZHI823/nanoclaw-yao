@@ -9,6 +9,7 @@
       "env": {
         "UV_CACHE_DIR": "/workspace/group/.cache",
         "UV_PYPI_URL": "https://mirrors.aliyun.com/pypi/simple/",
+        "UV_INDEX_URL": "https://mirrors.aliyun.com/pypi/simple/",
         "MINIMAX_API_KEY": "__ANTHROPIC_API_KEY__",
         "MINIMAX_API_HOST": "https://api.minimaxi.com"
       }

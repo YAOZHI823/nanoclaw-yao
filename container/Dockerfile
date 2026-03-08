@@ -38,12 +38,7 @@ RUN apt-get update && apt-get install -y \
 
 # ============ Python 依赖 ============
 RUN pip3 install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ \
-    pypdf pdfplumber reportlab python-docx python-pptx openpyxl pillow --break-system-packages
-
-# ============ uv 工具 ============
-# uvx 需要 uv 命令
-RUN pip3 install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ uv --break-system-packages && \
-    rm -f /usr/local/bin/uvx && ln -s /usr/local/bin/uv /usr/local/bin/uvx
+    pypdf pdfplumber reportlab python-docx python-pptx openpyxl pillow uv --break-system-packages
 
 # ============ 全局 npm 包 ============
 RUN npm install -g agent-browser @anthropic-ai/claude-code

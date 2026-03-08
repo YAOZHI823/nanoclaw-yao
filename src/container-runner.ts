@@ -123,8 +123,6 @@ function buildVolumeMounts(
       // Enable Claude's memory feature (persists user preferences between sessions)
       // https://code.claude.com/docs/en/memory#manage-auto-memory
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
-      // Use PyPI mirror for uvx (MCP packages) - required for Chinese network
-      UV_INDEX_URL: 'https://pypi.tuna.tsinghua.edu.cn/simple',
     };
 
     // Add secrets to env settings
@@ -159,11 +157,6 @@ function buildVolumeMounts(
               const secretName = value.slice(2, -2);
               env[key] = secrets?.[secretName] || '';
             }
-          }
-
-          // Add UV_INDEX_URL for Python MCPs (uvx) - required for Chinese network
-          if (serverName === 'MiniMax' || (config.command === 'uvx')) {
-            env['UV_INDEX_URL'] = 'https://pypi.tuna.tsinghua.edu.cn/simple';
           }
 
           // Fix ~ path to /home/node for Node.js MCPs
