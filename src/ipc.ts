@@ -10,8 +10,8 @@ import {
   TIMEZONE,
   DEVICE_JID_PATTERN,
 } from './config.js';
-import { AvailableGroup } from './container-runner.js';
-import { createTask, deleteTask, getRegisteredGroup, getTaskById, setRegisteredGroup, updateTask } from './db.js';
+import { AvailableGroup, writeTasksSnapshot } from './container-runner.js';
+import { createTask, deleteTask, getAllTasks, getRegisteredGroup, getTaskById, setRegisteredGroup, updateTask } from './db.js';
 import { isValidGroupFolder, resolveGroupFolderPath } from './group-folder.js';
 import { logger } from './logger.js';
 import { AdditionalMount, ContainerConfig, RegisteredGroup } from './types.js';
@@ -331,6 +331,23 @@ export async function processTaskIpc(
           status: 'active',
           created_at: new Date().toISOString(),
         });
+
+        // Update tasks snapshot so container can see the new task immediately
+        const allTasks = getAllTasks();
+        writeTasksSnapshot(
+          targetFolder,
+          targetFolder === MAIN_GROUP_FOLDER,
+          allTasks.map((t) => ({
+            id: t.id,
+            groupFolder: t.group_folder,
+            prompt: t.prompt,
+            schedule_type: t.schedule_type,
+            schedule_value: t.schedule_value,
+            status: t.status,
+            next_run: t.next_run,
+          })),
+        );
+
         logger.info(
           { taskId, sourceGroup, targetFolder, contextMode },
           'Task created via IPC',
@@ -343,6 +360,24 @@ export async function processTaskIpc(
         const task = getTaskById(data.taskId);
         if (task && (isMain || task.group_folder === sourceGroup)) {
           updateTask(data.taskId, { status: 'paused' });
+
+          // Update tasks snapshot
+          const allTasks = getAllTasks();
+          const taskFolder = task.group_folder;
+          writeTasksSnapshot(
+            taskFolder,
+            taskFolder === MAIN_GROUP_FOLDER,
+            allTasks.map((t) => ({
+              id: t.id,
+              groupFolder: t.group_folder,
+              prompt: t.prompt,
+              schedule_type: t.schedule_type,
+              schedule_value: t.schedule_value,
+              status: t.status,
+              next_run: t.next_run,
+            })),
+          );
+
           logger.info(
             { taskId: data.taskId, sourceGroup },
             'Task paused via IPC',
@@ -361,6 +396,24 @@ export async function processTaskIpc(
         const task = getTaskById(data.taskId);
         if (task && (isMain || task.group_folder === sourceGroup)) {
           updateTask(data.taskId, { status: 'active' });
+
+          // Update tasks snapshot
+          const allTasks = getAllTasks();
+          const taskFolder = task.group_folder;
+          writeTasksSnapshot(
+            taskFolder,
+            taskFolder === MAIN_GROUP_FOLDER,
+            allTasks.map((t) => ({
+              id: t.id,
+              groupFolder: t.group_folder,
+              prompt: t.prompt,
+              schedule_type: t.schedule_type,
+              schedule_value: t.schedule_value,
+              status: t.status,
+              next_run: t.next_run,
+            })),
+          );
+
           logger.info(
             { taskId: data.taskId, sourceGroup },
             'Task resumed via IPC',
@@ -379,6 +432,24 @@ export async function processTaskIpc(
         const task = getTaskById(data.taskId);
         if (task && (isMain || task.group_folder === sourceGroup)) {
           deleteTask(data.taskId);
+
+          // Update tasks snapshot
+          const allTasks = getAllTasks();
+          const taskFolder = task.group_folder;
+          writeTasksSnapshot(
+            taskFolder,
+            taskFolder === MAIN_GROUP_FOLDER,
+            allTasks.map((t) => ({
+              id: t.id,
+              groupFolder: t.group_folder,
+              prompt: t.prompt,
+              schedule_type: t.schedule_type,
+              schedule_value: t.schedule_value,
+              status: t.status,
+              next_run: t.next_run,
+            })),
+          );
+
           logger.info(
             { taskId: data.taskId, sourceGroup },
             'Task cancelled via IPC',

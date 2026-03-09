@@ -71,7 +71,14 @@ if (!isDeviceGroup) {
 
 server.tool(
   'schedule_task',
-  `Schedule a recurring or one-time task. The task will run as a full agent with access to all tools.
+  `Schedule a recurring or one-time task. The task will be saved to database and will run automatically at the specified time.
+
+WARNING: NEVER create tasks by writing to files - you MUST use this schedule_task tool!
+
+IMPORTANT - How to manage tasks:
+1. After creating a task, it is saved to database automatically
+2. To see all tasks, call list_tasks tool
+3. To cancel a task, you MUST first call list_tasks to get the task_id, then call cancel_task with that id
 
 CONTEXT MODE - Choose based on task type:
 \u2022 "group": Task runs in the group's conversation context, with access to chat history. Use for tasks that need context about ongoing discussions, user preferences, or recent interactions.
@@ -158,7 +165,7 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
 
 server.tool(
   'list_tasks',
-  "List all scheduled tasks. From main: shows all tasks. From other groups: shows only that group's tasks.",
+  "List all scheduled tasks. From main: shows all tasks. From other groups: shows only that group's tasks. IMPORTANT: The response shows task_id which is required for cancel_task, pause_task, and resume_task. WARNING: NEVER edit current_tasks.json directly - you MUST use cancel_task or cancel_all_tasks tools.",
   {},
   async () => {
     const tasksFile = path.join(IPC_DIR, 'current_tasks.json');
@@ -234,8 +241,8 @@ server.tool(
 
 server.tool(
   'cancel_task',
-  'Cancel and delete a scheduled task.',
-  { task_id: z.string().describe('The task ID to cancel') },
+  'Cancel and delete a scheduled task. You MUST call list_tasks first to get the task_id before calling this tool. The task_id format is like "task-1234567890-xxxxxx".',
+  { task_id: z.string().describe('The task ID to cancel (must get from list_tasks first)') },
   async (args) => {
     const data = {
       type: 'cancel_task',
@@ -248,6 +255,38 @@ server.tool(
     writeIpcFile(TASKS_DIR, data);
 
     return { content: [{ type: 'text' as const, text: `Task ${args.task_id} cancellation requested.` }] };
+  },
+);
+
+server.tool(
+  'cancel_all_tasks',
+  `Cancel and delete ALL scheduled tasks for this group. Use this when user asks to "cancel all tasks" or "delete all tasks".
+
+MANDATORY: You MUST call this tool to actually cancel tasks. Do NOT just say "cancelled" - you MUST call the tool! The tool will write to IPC file to delete tasks from database. Without calling this tool, tasks will NOT be deleted.`,
+  {},
+  async () => {
+    // Read current tasks to get all task IDs
+    const tasksFile = path.join(IPC_DIR, 'current_tasks.json');
+    let taskIds: string[] = [];
+
+    if (fs.existsSync(tasksFile)) {
+      const tasks = JSON.parse(fs.readFileSync(tasksFile, 'utf-8'));
+      taskIds = tasks.map((t: { id: string }) => t.id);
+    }
+
+    // Write cancel request for each task
+    for (const taskId of taskIds) {
+      const data = {
+        type: 'cancel_task',
+        taskId,
+        groupFolder,
+        isMain,
+        timestamp: new Date().toISOString(),
+      };
+      writeIpcFile(TASKS_DIR, data);
+    }
+
+    return { content: [{ type: 'text' as const, text: `已取消 ${taskIds.length} 个任务: ${taskIds.join(', ')}。数据库中的任务已删除。` }] };
   },
 );
 

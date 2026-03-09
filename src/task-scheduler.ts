@@ -223,6 +223,9 @@ export function startSchedulerLoop(deps: SchedulerDependencies): void {
           continue;
         }
 
+        // Mark task as running to prevent duplicate execution during poll interval
+        updateTask(task.id, { status: 'running' });
+
         deps.queue.enqueueTask(currentTask.chat_jid, currentTask.id, () =>
           runTask(currentTask, deps),
         );
