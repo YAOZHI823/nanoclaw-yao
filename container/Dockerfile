@@ -16,6 +16,10 @@ RUN apt-get update && apt-get install -y \
     chromium \
     fonts-liberation \
     fonts-noto-color-emoji \
+    fonts-wqy-zenhei \
+    fonts-wqy-microhei \
+    fonts-noto-cjk \
+    fontconfig \
     libgbm1 \
     libnss3 \
     libatk-bridge2.0-0 \
@@ -32,9 +36,13 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     python3 \
-    python3-pip \
-    sudo \
-    && rm -rf /var/lib/apt/lists/*
+    python3-pip
+
+# ============ Docker 客户端 (阿里云镜像) ============
+RUN curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://mirrors.aliyun.com/docker-ce/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list && \
+    apt-get update && apt-get install -y docker-ce-cli && fc-cache -fv && \
+    rm -rf /var/lib/apt/lists/*
 
 # ============ Python 依赖 ============
 RUN pip3 install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ \
