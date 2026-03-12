@@ -1,0 +1,13 @@
+{
+  "id": "ep-2025-03-11-002",
+  "timestamp": "2025-03-11T00:00:00Z",
+  "skill": "debugger",
+  "situation": "Container's list_mounts command returns empty - no response to user",
+  "root_cause": "Container executes operation but has no mechanism to return results to caller",
+  "solution": "Added IPC response mechanism - after operation completes, write response JSON to IPC messages directory with chatJid for routing",
+  "lesson": "Container operations that need to return results should use IPC response mechanism",
+  "related_patterns": ["ipc_response_mechanism"],
+  "files_changed": [
+    "src/ipc.ts"
+  ]
+}

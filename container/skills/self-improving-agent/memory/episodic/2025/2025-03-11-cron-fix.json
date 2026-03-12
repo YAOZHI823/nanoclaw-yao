@@ -1,0 +1,17 @@
+{
+  "id": "ep-2025-03-11-001",
+  "timestamp": "2025-03-11T00:00:00Z",
+  "skill": "debugger",
+  "situation": "Cron scheduled tasks were not executing properly - tasks marked as completed but not running again",
+  "root_cause": "1) Task status set to 'completed' after running instead of 'active' for recurring tasks 2) Missing 'running' state to prevent duplicate execution 3) Container snapshot not updated after task operations 4) Missing cancel_all_tasks tool",
+  "solution": "1) Changed status to 'active' after completion for recurring tasks 2) Added 'running' state to prevent duplicate execution during poll intervals 3) Added writeTasksSnapshot() calls after every task operation 4) Added cancel_all_tasks tool",
+  "lesson": "Always include 'running' state in async state machines. Always sync snapshots after DB changes.",
+  "related_patterns": ["task_state_machine_completeness", "container_snapshot_sync"],
+  "files_changed": [
+    "src/db.ts",
+    "src/ipc.ts",
+    "src/task-scheduler.ts",
+    "src/types.ts",
+    "container/agent-runner/src/ipc-mcp-stdio.ts"
+  ]
+}

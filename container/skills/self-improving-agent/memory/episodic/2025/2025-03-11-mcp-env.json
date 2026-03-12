@@ -1,0 +1,15 @@
+{
+  "id": "ep-2025-03-11-003",
+  "timestamp": "2025-03-11T00:00:00Z",
+  "skill": "debugger",
+  "situation": "MCP packages (uvx) not working properly - UV_INDEX_URL env var configuration inconsistent",
+  "root_cause": "UV_INDEX_URL defined in multiple places: Dockerfile, container-runner.ts, and .mcp.json with different values",
+  "solution": "1) Removed UV_INDEX_URL from container-runner.ts 2) Added UV_INDEX_URL to .mcp.json env section 3) Used uv instead of uvx symlink in Dockerfile",
+  "lesson": "Related environment variables should be configured in ONE place to avoid inconsistency",
+  "related_patterns": ["centralized_env_config"],
+  "files_changed": [
+    "container/.mcp.json",
+    "container/Dockerfile",
+    "src/container-runner.ts"
+  ]
+}
