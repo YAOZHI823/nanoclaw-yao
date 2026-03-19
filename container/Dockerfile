@@ -46,7 +46,7 @@ RUN curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/debian/gpg | gpg --dea
 
 # ============ Python 依赖 ============
 RUN pip3 install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ \
-    pypdf pdfplumber reportlab python-docx python-pptx openpyxl pillow uv --break-system-packages
+    pypdf pdfplumber reportlab python-docx python-pptx openpyxl pillow uv akshare pandas numpy --break-system-packages
 
 # ============ 全局 npm 包 ============
 RUN npm install -g agent-browser @anthropic-ai/claude-code
