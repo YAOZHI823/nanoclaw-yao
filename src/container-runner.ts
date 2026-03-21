@@ -182,21 +182,16 @@ function buildVolumeMounts(
   }
 
   // Sync skills from container/skills/ into each group's .claude/skills/
-  // Use shell cp to avoid fs.cpSync crash on macOS with Docker osxfs
+  // Only sync if destination doesn't exist (first-time setup).
+  // After initial sync, each device maintains its own customized skills.
   const skillsSrc = path.join(process.cwd(), 'container', 'skills');
   const skillsDst = path.join(groupSessionsDir, 'skills');
-  if (fs.existsSync(skillsSrc)) {
-    // Remove existing skills dir first to avoid osxfs issues
-    if (fs.existsSync(skillsDst)) {
-      fs.rmSync(skillsDst, { recursive: true, force: true });
-    }
-    // Create skills directory
+  if (fs.existsSync(skillsSrc) && !fs.existsSync(skillsDst)) {
     fs.mkdirSync(skillsDst, { recursive: true });
     for (const skillDir of fs.readdirSync(skillsSrc)) {
       const srcDir = path.join(skillsSrc, skillDir);
       if (!fs.statSync(srcDir).isDirectory()) continue;
       const dstDir = path.join(skillsDst, skillDir);
-      // Use shell cp instead of fs.cpSync to avoid crash
       try {
         execSync(`cp -R "${srcDir}" "${dstDir}"`, { stdio: 'ignore' });
       } catch {
@@ -206,13 +201,11 @@ function buildVolumeMounts(
   }
 
   // Sync MCP packages from container/mcp/ into each group's .claude/mcp/
+  // Only sync if destination doesn't exist (first-time setup).
+  // After initial sync, each device maintains its own customized MCPs.
   const mcpSrc = path.join(process.cwd(), 'container', 'mcp');
   const mcpDst = path.join(groupSessionsDir, 'mcp');
-  if (fs.existsSync(mcpSrc)) {
-    // Remove existing mcp dir to avoid permission issues
-    if (fs.existsSync(mcpDst)) {
-      fs.rmSync(mcpDst, { recursive: true, force: true });
-    }
+  if (fs.existsSync(mcpSrc) && !fs.existsSync(mcpDst)) {
     fs.mkdirSync(mcpDst, { recursive: true });
     for (const mcpDir of fs.readdirSync(mcpSrc)) {
       const srcDir = path.join(mcpSrc, mcpDir);
